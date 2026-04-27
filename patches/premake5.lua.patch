@@ -1,5 +1,5 @@
 diff --git a/gframe/premake5.lua b/gframe/premake5.lua
-index d644c1c1..561a512a 100644
+index d644c1c1..cd86eb33 100644
 --- a/gframe/premake5.lua
 +++ b/gframe/premake5.lua
 @@ -2,12 +2,24 @@ local _includedirs=includedirs
@@ -37,7 +37,7 @@ index d644c1c1..561a512a 100644
 +				_includedirs { os.getenv("FFMPEG_DEV") .. "/include" }
 +				libdirs { os.getenv("FFMPEG_DEV") .. "/lib" }
 +			filter {}
-+			links { "avcodec", "avformat", "avutil", "swscale", "swresample", "avfilter" }
++			links { "avcodec", "avformat", "avutil", "avfilter", "swscale", "swresample" }
 +		end
 +
  	if static_core then

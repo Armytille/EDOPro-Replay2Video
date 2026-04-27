@@ -1,5 +1,5 @@
 diff --git a/gframe/gframe.cpp b/gframe/gframe.cpp
-index 7fa63fcc..d916d0ea 100644
+index 7fa63fcc..ea494aa8 100644
 --- a/gframe/gframe.cpp
 +++ b/gframe/gframe.cpp
 @@ -3,6 +3,7 @@
@@ -39,7 +39,7 @@ index 7fa63fcc..d916d0ea 100644
  
  namespace {
  void CheckArguments(const args_t& args) {
-@@ -139,6 +155,29 @@ int edopro_main(const args_t& args) {
+@@ -139,6 +155,30 @@ int edopro_main(const args_t& args) {
  	show_changelog = args[LAUNCH_PARAM::CHANGELOG].enabled;
  	ygo::ClientUpdater updater(args[LAUNCH_PARAM::OVERRIDE_UPDATE_URL].argument);
  	ygo::gClientUpdater = &updater;
@@ -70,7 +70,7 @@ index 7fa63fcc..d916d0ea 100644
  	std::unique_ptr<ygo::DataHandler> data{ nullptr };
  	try {
  		data = std::make_unique<ygo::DataHandler>();
-@@ -156,10 +195,12 @@ int edopro_main(const args_t& args) {
+@@ -156,10 +196,12 @@ int edopro_main(const args_t& args) {
  		ygo::GUIUtils::ShowErrorWindow("Initialization fail", text);
  		return EXIT_FAILURE;
  	}
@@ -84,7 +84,7 @@ index 7fa63fcc..d916d0ea 100644
  		FILE* fDummy;
  #ifdef _MSC_VER
  		freopen_s(&fDummy, "NUL", "r", stdin);
-@@ -179,7 +220,38 @@ int edopro_main(const args_t& args) {
+@@ -179,7 +221,38 @@ int edopro_main(const args_t& args) {
  		ygo::mainGame->gSettings.chkFullscreen->setChecked(ygo::gGameConfig->fullscreen);
  	});
  #endif
@@ -123,7 +123,7 @@ index 7fa63fcc..d916d0ea 100644
  	std::unique_ptr<JWrapper> joystick{ nullptr };
  	bool firstlaunch = true;
  	bool reset = false;
-@@ -187,6 +259,12 @@ int edopro_main(const args_t& args) {
+@@ -187,6 +260,12 @@ int edopro_main(const args_t& args) {
  		Game _game{};
  		ygo::mainGame = &_game;
  		std::swap(data->tmp_device, ygo::mainGame->device);
@@ -136,7 +136,7 @@ index 7fa63fcc..d916d0ea 100644
  		try {
  			ygo::mainGame->Initialize();
  		}
-@@ -202,6 +280,29 @@ int edopro_main(const args_t& args) {
+@@ -202,6 +281,30 @@ int edopro_main(const args_t& args) {
  			gJWrapper = joystick.get();
  			firstlaunch = false;
  			CheckArguments(args);

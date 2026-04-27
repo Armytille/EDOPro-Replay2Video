@@ -40,6 +40,7 @@ struct RenderConfig {
     std::string hwaccel_device = ""; // hwaccel device (e.g., "0")
     float speed = 1.0f; // playback speed multiplier: 1.0=normal, 1.3=30% faster
     float margin = 0.10f; // left+right margin as fraction of output width (0.10 = 10% each side)
+    float interface_scale = 1.0f; // interface scale multiplier (1.0 = 1024×640, 2.0 = 2048×1280, etc.)
     bool dry_run = false;
     int dry_run_frames = 10;
     int dry_run_save_frame = 5;

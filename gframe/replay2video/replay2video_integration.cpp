@@ -113,6 +113,10 @@ bool RenderConfig::ParseArgs(int argc, wchar_t* argv[]) {
             std::string s;
             if (!next(s)) return false;
             margin = std::stof(s);
+        } else if (arg == L"--interface-scale") {
+            std::string s;
+            if (!next(s)) return false;
+            interface_scale = std::stof(s);
         }
     }
     return true;
@@ -155,6 +159,7 @@ bool RenderConfig::LoadIni(const std::string& path) {
             else if (key == "hwaccel_device") hwaccel_device = val;
             else if (key == "speed") speed = std::stof(val);
             else if (key == "margin") margin = std::stof(val);
+            else if (key == "interface_scale") interface_scale = std::stof(val);
         } catch (...) {
             // Ignore malformed values
         }
@@ -166,10 +171,16 @@ void RenderConfig::Normalize() {
     if (width < 640) width = 640;
     if (height < 480) height = 480;
 
-    // Determine Irrlicht window size. OpenGL backbuffers on Windows are capped to the
-    // desktop resolution by DWM — rendering beyond the monitor size produces black pixels.
-    // If render_width/height are not set, auto-detect the desktop resolution and clamp.
-    if (render_width <= 0 || render_height <= 0) {
+    // Determine Irrlicht window size. For interface_scale > 1.0, use scaled 1024x640 base.
+    // Otherwise, auto-detect desktop resolution (clamped to output for compatibility).
+    if (interface_scale > 1.0f) {
+        render_width = static_cast<int>(width * interface_scale);
+        render_height = static_cast<int>(height * interface_scale);
+        margin = 0.0f; // No margins when filling screen to avoid black bands
+        std::cout << "[replay2video] Interface scale " << interface_scale
+                  << "x: render window " << render_width << "x" << render_height
+                  << " (fill " << width << "x" << height << " without margins)\n";
+    } else if (render_width <= 0 || render_height <= 0) {
 #ifdef _WIN32
         int desk_w = GetSystemMetrics(SM_CXSCREEN);
         int desk_h = GetSystemMetrics(SM_CYSCREEN);

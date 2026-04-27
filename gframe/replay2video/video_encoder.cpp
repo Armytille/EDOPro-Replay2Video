@@ -37,6 +37,24 @@ static std::string av_err(int errnum) {
     return std::string(buf);
 }
 
+// Returns the pixel format string the filtergraph should output for the given codec,
+// and the matching AVPixelFormat for codec_ctx_->pix_fmt.
+// av1_nvenc expects p010 (NV12 semi-planar 10-bit, native to NVENC hardware).
+// libsvtav1 expects yuv420p10le (planar 10-bit).
+// All other codecs use yuv420p (8-bit planar).
+static std::string filtergraph_pix_fmt(const std::string& codec) {
+    if (codec == "av1_nvenc")  return "p010";
+    if (codec == "libsvtav1")  return "yuv420p10le";
+    return "yuv420p";
+}
+
+static AVPixelFormat codec_pix_fmt(const std::string& codec, bool has_vf) {
+    if (!has_vf) return AV_PIX_FMT_YUV420P;
+    if (codec == "av1_nvenc")  return AV_PIX_FMT_P010;
+    if (codec == "libsvtav1")  return AV_PIX_FMT_YUV420P10LE;
+    return AV_PIX_FMT_YUV420P;
+}
+
 // Build a filtergraph:
 //   GPU path: buffersrc → hwupload → <vf> → hwdownload → format=yuv420p → buffersink
 //   CPU path: buffersrc → <vf>,format=yuv420p → buffersink
@@ -47,7 +65,7 @@ static std::string av_err(int errnum) {
 bool VideoEncoder::InitFilterGraph(const RenderConfig& cfg) {
     int ret;
 
-    if (!cfg.vf.empty() && cfg.hwaccel == "vulkan") {
+    if (!cfg.vf.empty() && cfg.hwaccel == "vulkan" && cfg.codec != "libsvtav1") {
         std::string device_idx = cfg.hwaccel_device.empty() ? "0" : cfg.hwaccel_device;
         // linear_images=0: use staging buffers instead of VK_IMAGE_TILING_LINEAR for
         // CPU→GPU upload. NVIDIA does not support linear images beyond small sizes,
@@ -107,7 +125,8 @@ bool VideoEncoder::InitFilterGraph(const RenderConfig& cfg) {
         // causing VK_ERROR_OUT_OF_DEVICE_MEMORY on every frame.
         // The hw_device_ctx is attached to the filtergraph filters so libplacebo
         // can pick it up during graph config.
-        filter_chain = cfg.vf + ",format=yuv420p";
+        std::string vf = cfg.vf;
+        filter_chain = vf + ",format=" + filtergraph_pix_fmt(cfg.codec);
 
         AVFilterInOut* outputs = avfilter_inout_alloc();
         AVFilterInOut* inputs  = avfilter_inout_alloc();
@@ -176,7 +195,8 @@ bool VideoEncoder::Initialize(const RenderConfig& cfg) {
     codec_ctx_->height = height_;
     codec_ctx_->time_base = AVRational{ 1, fps_ };
     codec_ctx_->framerate = AVRational{ fps_, 1 };
-    codec_ctx_->pix_fmt = AV_PIX_FMT_YUV420P;
+    // Match codec_ctx_->pix_fmt to what the filtergraph will output (format= in InitFilterGraph).
+    codec_ctx_->pix_fmt = codec_pix_fmt(cfg.codec, !cfg.vf.empty());
     codec_ctx_->gop_size = fps_;
     codec_ctx_->max_b_frames = 0;
     if (fmt_ctx_->oformat->flags & AVFMT_GLOBALHEADER)
@@ -197,11 +217,27 @@ bool VideoEncoder::Initialize(const RenderConfig& cfg) {
                     std::cerr << "[replay2video] Warning: tune=" << cfg.tune
                               << " not valid for " << cfg.codec << ", ignored\n";
             }
+        } else if (cfg.codec == "libsvtav1") {
+            // SVT-AV1: preset 0 (best quality/slowest) to 13 (fastest). Default 8 if unspecified.
+            std::string svt_preset = cfg.preset.empty() ? "8" : cfg.preset;
+            av_opt_set(codec_ctx_->priv_data, "preset", svt_preset.c_str(), 0);
+            // SVT-AV1 v4: av_opt_set("crf","0") is treated as unset (default=0 in AVOption).
+            // Pass all quality params through svtav1-params to ensure they are applied.
+            // tune=0: VQ (visual quality/sharpness) instead of PSNR (default tune=1).
+            // keyint: default 2-3s is too short for VOD; use 5s.
+            // tf-strength=0: disable temporal filtering — synthetic game content has no noise
+            //   to remove, and temporal smoothing blurs sharp card textures.
+            // ac-bias=1.2: boost AC coefficient preservation for sharp edges (cards, text).
+            std::string svt_params = "tune=0"
+                                     ":keyint=" + std::to_string(fps_ * 5) +
+                                     ":tf-strength=0"
+                                     ":ac-bias=1.2"
+                                     ":crf=" + std::to_string(cfg.crf);
+            av_opt_set(codec_ctx_->priv_data, "svtav1-params", svt_params.c_str(), 0);
         }
     }
 
-    if (cfg.codec == "h264_nvenc" || cfg.codec == "hevc_nvenc" || cfg.codec == "av1_nvenc") {
-        // NVENC preset: p1 (fastest) to p7 (slowest/best). Use p4 (balanced) unless user specified.
+    if (cfg.codec == "h264_nvenc" || cfg.codec == "hevc_nvenc") {
         std::string nvenc_preset = cfg.preset;
         if (nvenc_preset.empty() || (nvenc_preset != "p1" && nvenc_preset != "p2" &&
             nvenc_preset != "p3" && nvenc_preset != "p4" && nvenc_preset != "p5" &&
@@ -211,19 +247,42 @@ bool VideoEncoder::Initialize(const RenderConfig& cfg) {
         av_opt_set(codec_ctx_->priv_data, "tune", "hq", 0);
         if (cfg.codec == "h264_nvenc")
             av_opt_set(codec_ctx_->priv_data, "profile", "high", 0);
-        // CRF → CQ mapping: NVENC uses rc=vbr + cq for constant-quality mode
         if (cfg.bitrate_kbps <= 0) {
             av_opt_set(codec_ctx_->priv_data, "rc", "vbr", 0);
             av_opt_set(codec_ctx_->priv_data, "cq", std::to_string(cfg.crf).c_str(), 0);
             codec_ctx_->bit_rate = 0;
         }
-        // Quality enhancements: AQ
         av_opt_set(codec_ctx_->priv_data, "spatial-aq", "1", 0);
         av_opt_set(codec_ctx_->priv_data, "temporal-aq", "1", 0);
         av_opt_set(codec_ctx_->priv_data, "aq-strength", "8", 0);
-        // rc-lookahead disabled: causes frame duplication/freeze with av1_nvenc
-        if (cfg.codec != "av1_nvenc")
-            av_opt_set(codec_ctx_->priv_data, "rc-lookahead", "32", 0);
+        av_opt_set(codec_ctx_->priv_data, "rc-lookahead", "32", 0);
+    }
+
+    if (cfg.codec == "av1_nvenc") {
+        // Preset: p1 (fastest) to p7 (slowest/best). Default p7 for max quality.
+        std::string nvenc_preset = cfg.preset;
+        if (nvenc_preset.empty() || (nvenc_preset != "p1" && nvenc_preset != "p2" &&
+            nvenc_preset != "p3" && nvenc_preset != "p4" && nvenc_preset != "p5" &&
+            nvenc_preset != "p6" && nvenc_preset != "p7"))
+            nvenc_preset = "p7";
+        av_opt_set(codec_ctx_->priv_data, "preset", nvenc_preset.c_str(), 0);
+
+        // CQ mode: cq + b:v=0, no explicit rc=vbr (NVENC manages internally).
+        // crf=0 → lossless not supported on AV1 NVENC; fall back to cq=1.
+        int effective_crf = (cfg.crf == 0 && cfg.bitrate_kbps <= 0) ? 1 : cfg.crf;
+        if (effective_crf != cfg.crf)
+            std::cerr << "[replay2video] Warning: av1_nvenc lossless not supported on this GPU, using cq=1\n";
+
+        av_opt_set(codec_ctx_->priv_data, "tune", "hq", 0);
+        if (cfg.bitrate_kbps <= 0) {
+            av_opt_set(codec_ctx_->priv_data, "cq", std::to_string(effective_crf).c_str(), 0);
+            codec_ctx_->bit_rate = 0;
+        }
+        av_opt_set(codec_ctx_->priv_data, "multipass", "fullres", 0);
+        av_opt_set(codec_ctx_->priv_data, "rc-lookahead", "48", 0);
+        av_opt_set(codec_ctx_->priv_data, "spatial-aq", "1", 0);
+        av_opt_set(codec_ctx_->priv_data, "temporal-aq", "1", 0);
+        av_opt_set(codec_ctx_->priv_data, "aq-strength", "8", 0);
     }
 
     int ret = avcodec_open2(codec_ctx_, codec, nullptr);

@@ -1,0 +1,27 @@
+diff --git a/gframe/drawing.cpp b/gframe/drawing.cpp
+index 918406c7..1e78f8ae 100644
+--- a/gframe/drawing.cpp
++++ b/gframe/drawing.cpp
+@@ -1,6 +1,9 @@
+ #include "game_config.h"
+ #include <irrlicht.h>
+ #include "game.h"
++#ifdef WITH_REPLAY2VIDEO
++#include "replay2video/replay2video_integration.h"
++#endif
+ #include "materials.h"
+ #include "client_card.h"
+ #include "deck_manager.h"
+@@ -1176,6 +1179,12 @@ void Game::PopupElement(irr::gui::IGUIElement * element, int hideframe) {
+ 	else ShowElement(element, hideframe);
+ }
+ void Game::WaitFrameSignal(int frame, std::unique_lock<epro::mutex>& _lck) {
++#ifdef WITH_REPLAY2VIDEO
++	if(replay2video::g_batch.active) {
++		signalFrame = static_cast<uint32_t>(frame * 1000 / 60 / replay2video::g_batch.config.speed);
++		return; // MainLoop decrements signalFrame; StepBatch won't run until it hits 0
++	}
++#endif
+ 	signalFrame = (gGameConfig->quick_animation && frame >= 12) ? 12 * 1000 / 60 : frame * 1000 / 60;
+ 	frameSignal.Wait(_lck);
+ }

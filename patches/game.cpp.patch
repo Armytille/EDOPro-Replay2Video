@@ -1,5 +1,5 @@
 diff --git a/gframe/game.cpp b/gframe/game.cpp
-index faf909f2..18720ccb 100644
+index faf909f2..dd55cc92 100644
 --- a/gframe/game.cpp
 +++ b/gframe/game.cpp
 @@ -40,6 +40,10 @@
@@ -100,27 +100,29 @@ index faf909f2..18720ccb 100644
  		gJWrapper->ProcessEvents();
  		bool resized = false;
  		auto size = driver->getScreenSize();
-@@ -2088,6 +2145,19 @@ bool Game::MainLoop() {
+@@ -2088,6 +2145,21 @@ bool Game::MainLoop() {
  		atkdy = (float)sin(atkframe);
  		driver->beginScene(true, true, irr::video::SColor(0, 0, 0, 0));
  		gMutex.lock();
 +#ifdef WITH_REPLAY2VIDEO
 +		if(replay2video::g_batch.active && !replay2video::g_batch.replay_finished && dInfo.isInDuel) {
-+			gMutex.unlock();
-+			actionSignal.SetNoWait(true);
-+			closeDoneSignal.SetNoWait(true);
-+			frameSignal.SetNoWait(true);
-+			ReplayMode::StepBatch();
-+			frameSignal.SetNoWait(false);
-+			actionSignal.SetNoWait(false);
-+			closeDoneSignal.SetNoWait(false);
-+			gMutex.lock();
++			// Only call StepBatch when no animation is pending (signalFrame==0).
++			// WaitFrameSignal sets signalFrame; MainLoop decrements it via delta_time.
++			if(signalFrame == 0) {
++				gMutex.unlock();
++				actionSignal.SetNoWait(true);
++				closeDoneSignal.SetNoWait(true);
++				ReplayMode::StepBatch();
++				actionSignal.SetNoWait(false);
++				closeDoneSignal.SetNoWait(false);
++				gMutex.lock();
++			}
 +		}
 +#endif
  		if(dInfo.isInDuel) {
  			if(dInfo.isReplay)
  				discord.UpdatePresence(DiscordWrapper::REPLAY);
-@@ -2166,6 +2236,11 @@ bool Game::MainLoop() {
+@@ -2166,6 +2238,11 @@ bool Game::MainLoop() {
  		wBtnSettings->setVisible(!(is_building || is_siding || dInfo.isInDuel || open_file));
  		DrawGUI();
  		DrawSpec();
@@ -132,7 +134,7 @@ index faf909f2..18720ccb 100644
  		if(cardimagetextureloading) {
  			ShowCardInfo(showingcard);
  		}
-@@ -2187,6 +2262,11 @@ bool Game::MainLoop() {
+@@ -2187,6 +2264,11 @@ bool Game::MainLoop() {
  		}
  		driver->endScene();
  		gMutex.unlock();
@@ -144,7 +146,7 @@ index faf909f2..18720ccb 100644
  		if(closeDuelWindow)
  			CloseDuelWindow();
  		if (DuelClient::try_needed) {
-@@ -2321,6 +2401,11 @@ bool Game::MainLoop() {
+@@ -2321,6 +2403,11 @@ bool Game::MainLoop() {
  	SingleMode::StopPlay(true);
  	ReplayMode::StopReplay(true);
  	ClearTextures();

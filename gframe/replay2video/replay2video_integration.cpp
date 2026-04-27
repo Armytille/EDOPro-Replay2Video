@@ -80,6 +80,10 @@ bool RenderConfig::ParseArgs(int argc, wchar_t* argv[]) {
             std::string s;
             if (!next(s)) return false;
             workdir = s;
+        } else if (arg == L"--speed") {
+            std::string s;
+            if (!next(s)) return false;
+            speed = std::stof(s);
         } else if (arg == L"--dry-run") {
             dry_run = true;
         }
@@ -116,6 +120,7 @@ bool RenderConfig::LoadIni(const std::string& path) {
             else if (key == "codec") codec = val;
             else if (key == "bitrate") bitrate_kbps = std::stoi(val);
             else if (key == "workdir") workdir = val;
+            else if (key == "speed") speed = std::stof(val);
         } catch (...) {
             // Ignore malformed values
         }
@@ -132,6 +137,7 @@ void RenderConfig::Normalize() {
     if (crf > 51) crf = 51;
     if (preset.empty()) preset = "veryfast";
     if (codec.empty()) codec = "libx264";
+    if (speed <= 0.0f) speed = 1.0f;
 }
 
 void BatchState::Start(const RenderConfig& cfg) {

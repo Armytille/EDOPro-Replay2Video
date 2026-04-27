@@ -1,5 +1,5 @@
 diff --git a/gframe/gframe.cpp b/gframe/gframe.cpp
-index 7fa63fcc..eaf24158 100644
+index 7fa63fcc..d916d0ea 100644
 --- a/gframe/gframe.cpp
 +++ b/gframe/gframe.cpp
 @@ -3,6 +3,7 @@
@@ -135,7 +135,7 @@ index 7fa63fcc..eaf24158 100644
  		try {
  			ygo::mainGame->Initialize();
  		}
-@@ -202,6 +280,28 @@ int edopro_main(const args_t& args) {
+@@ -202,6 +280,29 @@ int edopro_main(const args_t& args) {
  			gJWrapper = joystick.get();
  			firstlaunch = false;
  			CheckArguments(args);
@@ -154,6 +154,7 @@ index 7fa63fcc..eaf24158 100644
 +					std::cerr << "[replay2video] Replay has no packets: " << cfg.input_replay << "\n";
 +					return EXIT_FAILURE;
 +				}
++				ygo::gGameConfig->quick_animation = false;
 +				ygo::mainGame->wMainMenu->setVisible(false);
 +				ygo::mainGame->mTopMenu->setVisible(false);
 +				ygo::mainGame->MainLoop();

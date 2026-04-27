@@ -30,6 +30,7 @@ struct RenderConfig {
     std::string preset = "veryfast";
     std::string codec = "libx264";
     int bitrate_kbps = 0; // 0 = use CRF
+    float speed = 1.0f; // playback speed multiplier: 1.0=normal, 1.3=30% faster
     bool dry_run = false;
     int dry_run_frames = 10;
     int dry_run_save_frame = 5;

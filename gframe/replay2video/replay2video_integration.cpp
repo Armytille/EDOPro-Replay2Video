@@ -64,6 +64,8 @@ bool RenderConfig::ParseArgs(int argc, wchar_t* argv[]) {
             }
         } else if (arg == L"--fps") {
             next_int(fps);
+        } else if (arg == L"--sim-fps") {
+            next_int(sim_fps);
         } else if (arg == L"--crf") {
             next_int(crf);
         } else if (arg == L"--preset") {
@@ -115,6 +117,7 @@ bool RenderConfig::LoadIni(const std::string& path) {
                     height = std::stoi(val.substr(x + 1));
                 }
             } else if (key == "fps") fps = std::stoi(val);
+            else if (key == "sim_fps") sim_fps = std::stoi(val);
             else if (key == "crf") crf = std::stoi(val);
             else if (key == "preset") preset = val;
             else if (key == "codec") codec = val;
@@ -131,8 +134,44 @@ bool RenderConfig::LoadIni(const std::string& path) {
 void RenderConfig::Normalize() {
     if (width < 640) width = 640;
     if (height < 480) height = 480;
+
+    // Determine Irrlicht window size. OpenGL backbuffers on Windows are capped to the
+    // desktop resolution by DWM — rendering beyond the monitor size produces black pixels.
+    // If render_width/height are not set, auto-detect the desktop resolution and clamp.
+    if (render_width <= 0 || render_height <= 0) {
+#ifdef _WIN32
+        int desk_w = GetSystemMetrics(SM_CXSCREEN);
+        int desk_h = GetSystemMetrics(SM_CYSCREEN);
+        if (desk_w > 0 && desk_h > 0) {
+            render_width  = std::min(width,  desk_w);
+            render_height = std::min(height, desk_h);
+        } else {
+            render_width  = width;
+            render_height = height;
+        }
+#else
+        render_width  = width;
+        render_height = height;
+#endif
+        if (render_width != width || render_height != height) {
+            std::cout << "[replay2video] Desktop is " << render_width << "x" << render_height
+                      << " — rendering at native res, upscaling to "
+                      << width << "x" << height << " via swscale\n";
+        }
+    }
+
     if (fps < 1) fps = 60;
     if (fps > 240) fps = 240;
+    // sim_fps=0 means "same as fps" (no frame doubling)
+    if (sim_fps <= 0) sim_fps = fps;
+    if (sim_fps > fps) sim_fps = fps; // can't simulate faster than output
+    // ensure fps is an exact multiple of sim_fps for clean frame doubling
+    if (fps % sim_fps != 0) {
+        // round sim_fps down to nearest divisor of fps
+        for (int d = sim_fps; d >= 1; --d) {
+            if (fps % d == 0) { sim_fps = d; break; }
+        }
+    }
     if (crf < 0) crf = 0;
     if (crf > 51) crf = 51;
     if (preset.empty()) preset = "veryfast";
@@ -142,8 +181,10 @@ void RenderConfig::Normalize() {
 
 void BatchState::Start(const RenderConfig& cfg) {
     config = cfg;
-    target_fps = cfg.fps;
+    // Simulation runs at sim_fps; each simulated frame is written fps/sim_fps times to the video.
+    target_fps = cfg.sim_fps;
     frame_time_ms = 1000 / target_fps;
+    frames_per_sim = cfg.fps / cfg.sim_fps; // e.g. 60/30=2 — frame doubling factor
     virtual_time_ms = 0;
     frame_count = 0;
     replay_finished = false;
@@ -169,7 +210,8 @@ uint64_t BatchState::AdvanceVirtualTime() {
 
 bool Integration::Initialize() {
     capture = std::make_unique<FrameCapture>();
-    if (!capture->Initialize(g_batch.config.width, g_batch.config.height)) {
+    // FBO driver is set later via SetupFBO() once the Irrlicht device is ready.
+    if (!capture->Initialize(g_batch.config.width, g_batch.config.height, nullptr)) {
         std::cerr << "[replay2video] FrameCapture init failed\n";
         return false;
     }
@@ -178,7 +220,24 @@ bool Integration::Initialize() {
         std::cerr << "[replay2video] VideoEncoder init failed\n";
         return false;
     }
+    if (g_batch.frames_per_sim > 1) {
+        std::cout << "[replay2video] Frame doubling: sim=" << g_batch.config.sim_fps
+                  << "fps output=" << g_batch.config.fps
+                  << "fps (x" << g_batch.frames_per_sim << " per frame)\n";
+    }
     return true;
+}
+
+void Integration::SetupFBO(irr::video::IVideoDriver* driver) {
+    if (capture) capture->SetupFBO(driver, g_batch.config.render_width, g_batch.config.render_height);
+}
+
+void Integration::BeginFrame() {
+    if (capture) capture->BeginFrame();
+}
+
+void Integration::EndFrame() {
+    if (capture) capture->EndFrame();
 }
 
 void Integration::Shutdown() {
@@ -207,7 +266,11 @@ bool Integration::ProcessFrame(irr::video::IVideoDriver* driver) {
         return true;
     }
     
-    bool ok = encoder->EncodeFrame(frame);
+    // Write each simulated frame frames_per_sim times (frame doubling for higher output FPS).
+    bool ok = true;
+    for (int i = 0; i < g_batch.frames_per_sim && ok; ++i) {
+        ok = encoder->EncodeFrame(frame);
+    }
     capture->ReleaseFrame(frame);
     return ok;
 }

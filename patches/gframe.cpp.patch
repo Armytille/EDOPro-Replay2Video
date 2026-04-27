@@ -50,11 +50,12 @@ index 7fa63fcc..d916d0ea 100644
 +		if(r2v_argv_pre && r2v_argc_pre > 1) {
 +			ygo::replay2video::RenderConfig r2v_cfg_pre;
 +			r2v_cfg_pre.ParseArgs(r2v_argc_pre, r2v_argv_pre);
++			r2v_cfg_pre.Normalize();
 +			LocalFree(r2v_argv_pre);
 +			if(!r2v_cfg_pre.input_replay.empty()) {
 +				s_batch_mode_detected = true;
-+				g_r2v_window_width = r2v_cfg_pre.width;
-+				g_r2v_window_height = r2v_cfg_pre.height;
++				g_r2v_window_width = r2v_cfg_pre.render_width;
++				g_r2v_window_height = r2v_cfg_pre.render_height;
 +				if(!r2v_cfg_pre.workdir.empty()) {
 +					if(!ygo::Utils::SetWorkingDirectory(ygo::Utils::ToPathString(r2v_cfg_pre.workdir))) {
 +						std::cerr << "[replay2video] Failed to set workdir: " << r2v_cfg_pre.workdir << "\n";
@@ -145,6 +146,7 @@ index 7fa63fcc..d916d0ea 100644
 +					std::cerr << "[replay2video] Integration init failed.\n";
 +					return EXIT_FAILURE;
 +				}
++				ygo::replay2video::g_integration.SetupFBO(ygo::mainGame->device->getVideoDriver());
 +				auto& cfg = ygo::replay2video::g_batch.config;
 +				if(!ygo::ReplayMode::cur_replay.OpenReplay(ygo::Utils::ToPathString(cfg.input_replay))) {
 +					std::cerr << "[replay2video] Failed to open replay: " << cfg.input_replay << "\n";

@@ -23,9 +23,12 @@ struct RenderConfig {
     std::string input_replay;
     std::string output_video;
     std::string workdir;
-    int width = 1920;
+    int width = 1920;         // output video resolution
     int height = 1080;
-    int fps = 60;
+    int render_width = 0;    // Irrlicht window size (0 = auto-detect from desktop, capped to output res)
+    int render_height = 0;
+    int fps = 60;            // output video FPS
+    int sim_fps = 0;         // simulation FPS (0 = same as fps); each sim frame is duplicated fps/sim_fps times
     int crf = 23;
     std::string preset = "veryfast";
     std::string codec = "libx264";
@@ -49,6 +52,7 @@ struct BatchState {
     std::atomic<uint64_t> virtual_time_ms{0};
     int target_fps = 60;
     int frame_time_ms = 16;
+    int frames_per_sim = 1;  // output frames written per simulated frame (fps / sim_fps)
     uint64_t max_frames = 0; // 0 = unlimited
     RenderConfig config;
 
@@ -67,7 +71,10 @@ struct Integration {
     std::unique_ptr<FrameCapture> capture;
 
     bool Initialize();
+    void SetupFBO(irr::video::IVideoDriver* driver);
     void Shutdown();
+    void BeginFrame();
+    void EndFrame();
     bool ProcessFrame(irr::video::IVideoDriver* driver);
     bool IsFinished() const;
 };

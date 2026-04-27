@@ -6,6 +6,7 @@
 #include <cstdint>
 
 struct AVFrame;
+struct AVPacket;
 struct AVCodecContext;
 struct AVFormatContext;
 struct AVStream;
@@ -39,6 +40,7 @@ private:
     AVStream* stream_ = nullptr;
     SwsContext* sws_ctx_ = nullptr;
     AVFrame* yuv_frame_ = nullptr;
+    AVPacket* pkt_ = nullptr;  // pre-allocated, reused each frame
     std::string output_path_;
 };
 

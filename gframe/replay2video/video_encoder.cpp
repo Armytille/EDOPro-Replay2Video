@@ -70,7 +70,7 @@ bool VideoEncoder::Initialize(const RenderConfig& cfg) {
     codec_ctx_->framerate = AVRational{ fps_, 1 };
     codec_ctx_->pix_fmt = AV_PIX_FMT_YUV420P;
     codec_ctx_->gop_size = fps_;
-    codec_ctx_->max_b_frames = 2;
+    codec_ctx_->max_b_frames = 0;
 
     if (cfg.bitrate_kbps > 0) {
         codec_ctx_->bit_rate = cfg.bitrate_kbps * 1000LL;
@@ -119,12 +119,9 @@ bool VideoEncoder::Initialize(const RenderConfig& cfg) {
     }
 
     // Prepare YUV420P frame and swscale context
-    sws_ctx_ = sws_getContext(width_, height_, AV_PIX_FMT_RGBA, width_, height_, AV_PIX_FMT_YUV420P,
-                              SWS_BILINEAR, nullptr, nullptr, nullptr);
-    if (!sws_ctx_) {
-        std::cerr << "[replay2video] sws_getContext failed\n";
-        return false;
-    }
+    // sws_ctx_ is created lazily on the first frame so we know the actual captured size.
+    // sws_getCachedContext() recreates it automatically if dimensions change.
+    sws_ctx_ = nullptr;
 
     yuv_frame_ = av_frame_alloc();
     if (!yuv_frame_) {
@@ -140,6 +137,12 @@ bool VideoEncoder::Initialize(const RenderConfig& cfg) {
         return false;
     }
 
+    pkt_ = av_packet_alloc();
+    if (!pkt_) {
+        std::cerr << "[replay2video] av_packet_alloc failed\n";
+        return false;
+    }
+
     initialized_ = true;
     std::cout << "[replay2video] Encoder initialized: " << width_ << "x" << height_
               << " @ " << fps_ << "fps, codec=" << cfg.codec << "\n";
@@ -149,8 +152,24 @@ bool VideoEncoder::Initialize(const RenderConfig& cfg) {
 bool VideoEncoder::EncodeFrame(AVFrame* rgba_frame) {
     if (!initialized_ || !rgba_frame) return false;
 
-    // Convert RGBA -> YUV420P
-    sws_scale(sws_ctx_, rgba_frame->data, rgba_frame->linesize, 0, height_,
+    // Lazily create/update swscale context from actual captured frame dimensions.
+    // sws_getCachedContext returns the existing context if parameters are unchanged,
+    // or frees and recreates it — handles the case where the GPU caps the framebuffer
+    // below the requested output resolution (e.g. 1080p capture → 4K output).
+    const int src_w = rgba_frame->width;
+    const int src_h = rgba_frame->height;
+    sws_ctx_ = sws_getCachedContext(sws_ctx_,
+        src_w, src_h, AV_PIX_FMT_BGRA,
+        width_, height_, AV_PIX_FMT_YUV420P,
+        src_w == width_ && src_h == height_ ? SWS_FAST_BILINEAR : SWS_BILINEAR,
+        nullptr, nullptr, nullptr);
+    if (!sws_ctx_) {
+        std::cerr << "[replay2video] sws_getCachedContext failed\n";
+        return false;
+    }
+
+    // Convert BGRA -> YUV420P (upscaling to output resolution if needed)
+    sws_scale(sws_ctx_, rgba_frame->data, rgba_frame->linesize, 0, src_h,
               yuv_frame_->data, yuv_frame_->linesize);
 
     yuv_frame_->pts = frame_pts_++;
@@ -161,30 +180,26 @@ bool VideoEncoder::EncodeFrame(AVFrame* rgba_frame) {
         return false;
     }
 
-    AVPacket* pkt = av_packet_alloc();
     while (ret >= 0) {
-        ret = avcodec_receive_packet(codec_ctx_, pkt);
+        ret = avcodec_receive_packet(codec_ctx_, pkt_);
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
             break;
         }
         if (ret < 0) {
             std::cerr << "[replay2video] avcodec_receive_packet failed: " << av_err(ret) << "\n";
-            av_packet_free(&pkt);
             return false;
         }
 
-        av_packet_rescale_ts(pkt, codec_ctx_->time_base, stream_->time_base);
-        pkt->stream_index = stream_->id;
+        av_packet_rescale_ts(pkt_, codec_ctx_->time_base, stream_->time_base);
+        pkt_->stream_index = stream_->id;
 
-        ret = av_interleaved_write_frame(fmt_ctx_, pkt);
-        av_packet_unref(pkt);
+        ret = av_interleaved_write_frame(fmt_ctx_, pkt_);
+        av_packet_unref(pkt_);
         if (ret < 0) {
             std::cerr << "[replay2video] av_interleaved_write_frame failed: " << av_err(ret) << "\n";
-            av_packet_free(&pkt);
             return false;
         }
     }
-    av_packet_free(&pkt);
     return true;
 }
 
@@ -192,19 +207,18 @@ void VideoEncoder::Finalize() {
     if (!initialized_) return;
 
     // Flush encoder
-    if (codec_ctx_) {
+    if (codec_ctx_ && pkt_) {
         int ret = avcodec_send_frame(codec_ctx_, nullptr);
-        AVPacket* pkt = av_packet_alloc();
         while (ret >= 0) {
-            ret = avcodec_receive_packet(codec_ctx_, pkt);
+            ret = avcodec_receive_packet(codec_ctx_, pkt_);
             if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) break;
             if (ret < 0) break;
-            av_packet_rescale_ts(pkt, codec_ctx_->time_base, stream_->time_base);
-            pkt->stream_index = stream_->id;
-            av_interleaved_write_frame(fmt_ctx_, pkt);
-            av_packet_unref(pkt);
+            av_packet_rescale_ts(pkt_, codec_ctx_->time_base, stream_->time_base);
+            pkt_->stream_index = stream_->id;
+            av_interleaved_write_frame(fmt_ctx_, pkt_);
+            av_packet_unref(pkt_);
         }
-        av_packet_free(&pkt);
+        av_packet_free(&pkt_);
     }
 
     if (fmt_ctx_) {

@@ -34,6 +34,35 @@ preset=veryfast
 #   libx265    = software HEVC/H.265, smaller files, slower, less compatible
 codec=libx264
 
+# Scaling algorithm for resolution conversion.
+#   bilinear     - fast, basic interpolation (default)
+#   lanczos      - sharper, better for upscaling, slower
+scale_filter=bilinear
+
+# x264/x265 tune parameter (optional). Optimizes encoding for specific content.
+#   film         - best for movies, animations (improves sharpness)
+#   animation    - optimized for cartoons
+#   grain        - preserves film grain
+#   (leave empty for default)
+tune=
+
+# Video filter (optional). Applies FFmpeg filters to the video stream for post-processing.
+# Examples:
+#   libplacebo=upscaler=ewa_lanczos:downscaler=ewa_lanczos:antiringing=1:deband=1
+#   (leave empty for no filter)
+vf=
+
+# Hardware acceleration (optional). Enables GPU acceleration for video filters.
+# Requires --vf and FFmpeg with hwaccel support (e.g., Vulkan).
+# Examples:
+#   vulkan  (uses Vulkan for GPU processing)
+#   (leave empty for CPU)
+hwaccel=
+
+# HW device index (optional). Specifies the GPU device for hwaccel.
+# Default is 0 (first GPU).
+hwaccel_device=0
+
 # Fixed bitrate override (optional). If set, CRF is ignored.
 # Example: 8000 = 8 Mbps. Useful when you need a guaranteed file size.
 # bitrate=8000

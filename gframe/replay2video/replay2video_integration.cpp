@@ -86,6 +86,26 @@ bool RenderConfig::ParseArgs(int argc, wchar_t* argv[]) {
             std::string s;
             if (!next(s)) return false;
             speed = std::stof(s);
+        } else if (arg == L"--scale-filter") {
+            std::string s;
+            if (!next(s)) return false;
+            scale_filter = s;
+        } else if (arg == L"--tune") {
+            std::string s;
+            if (!next(s)) return false;
+            tune = s;
+        } else if (arg == L"--vf") {
+            std::string s;
+            if (!next(s)) return false;
+            vf = s;
+        } else if (arg == L"--hwaccel") {
+            std::string s;
+            if (!next(s)) return false;
+            hwaccel = s;
+        } else if (arg == L"--hwaccel-device") {
+            std::string s;
+            if (!next(s)) return false;
+            hwaccel_device = s;
         } else if (arg == L"--dry-run") {
             dry_run = true;
         }
@@ -123,6 +143,11 @@ bool RenderConfig::LoadIni(const std::string& path) {
             else if (key == "codec") codec = val;
             else if (key == "bitrate") bitrate_kbps = std::stoi(val);
             else if (key == "workdir") workdir = val;
+            else if (key == "scale_filter") scale_filter = val;
+            else if (key == "tune") tune = val;
+            else if (key == "vf") vf = val;
+            else if (key == "hwaccel") hwaccel = val;
+            else if (key == "hwaccel_device") hwaccel_device = val;
             else if (key == "speed") speed = std::stof(val);
         } catch (...) {
             // Ignore malformed values
@@ -176,6 +201,7 @@ void RenderConfig::Normalize() {
     if (crf > 51) crf = 51;
     if (preset.empty()) preset = "veryfast";
     if (codec.empty()) codec = "libx264";
+    if (scale_filter.empty()) scale_filter = "bilinear";
     if (speed <= 0.0f) speed = 1.0f;
 }
 

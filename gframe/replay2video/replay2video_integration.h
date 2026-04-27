@@ -33,6 +33,11 @@ struct RenderConfig {
     std::string preset = "veryfast";
     std::string codec = "libx264";
     int bitrate_kbps = 0; // 0 = use CRF
+    std::string scale_filter = "bilinear"; // scaling algorithm: "bilinear" or "lanczos"
+    std::string tune = ""; // x264/x265 tune parameter: "film", "animation", "grain", etc. (empty = none)
+    std::string vf = ""; // video filter string (e.g., "libplacebo=upscaler=ewa_lanczos...")
+    std::string hwaccel = ""; // hardware acceleration (e.g., "vulkan")
+    std::string hwaccel_device = ""; // hwaccel device (e.g., "0")
     float speed = 1.0f; // playback speed multiplier: 1.0=normal, 1.3=30% faster
     bool dry_run = false;
     int dry_run_frames = 10;

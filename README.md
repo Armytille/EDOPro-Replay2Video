@@ -58,6 +58,11 @@ All rendering code is native EDOPro/Irrlicht. No custom renderer. No screenshot 
 | `--preset` | Encoding speed (`ultrafast`…`slow`) | `veryfast` |
 | `--codec` | `libx264`, `h264_nvenc`, `libx265` | `libx264` |
 | `--bitrate` | Override CRF with fixed kbps | *(none)* |
+| `--scale-filter` | Scaling algorithm (`bilinear`, `lanczos`) | `bilinear` |
+| `--tune` | x264/x265 tune (`film`, `animation`, etc.) | *(none)* |
+| `--vf` | Video filter string (e.g., `libplacebo=...`) | *(none)* |
+| `--hwaccel` | Hardware acceleration (e.g., `vulkan`) | *(none)* |
+| `--hwaccel-device` | HW device index (e.g., `0`) | *(none)* |
 | `--workdir` | EDOPro installation dir (containing `pics/`, `textures/`…) | `.` |
 | `--dry-run` | Render 10 frames, save frame #5 as PNG, exit | *(disabled)* |
 
@@ -72,6 +77,8 @@ fps=60
 crf=23
 preset=veryfast
 codec=libx264
+scale_filter=bilinear
+# tune=film
 # bitrate=8000
 workdir=C:\Games\EDOPro
 ```

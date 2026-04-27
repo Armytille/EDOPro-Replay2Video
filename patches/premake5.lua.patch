@@ -37,7 +37,7 @@ index d644c1c1..561a512a 100644
 +				_includedirs { os.getenv("FFMPEG_DEV") .. "/include" }
 +				libdirs { os.getenv("FFMPEG_DEV") .. "/lib" }
 +			filter {}
-+			links { "avcodec", "avformat", "avutil", "swscale", "swresample" }
++			links { "avcodec", "avformat", "avutil", "swscale", "swresample", "avfilter" }
 +		end
 +
  	if static_core then

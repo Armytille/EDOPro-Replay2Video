@@ -1,0 +1,9 @@
+edopro/
+ffmpeg-dev/
+ffmpeg-temp/
+ffmpeg.7z
+premake.zip
+premake5/
+vcpkg/
+*.mp4
+*.yrpX

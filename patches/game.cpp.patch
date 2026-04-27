@@ -1,0 +1,138 @@
+diff --git a/gframe/game.cpp b/gframe/game.cpp
+index faf909f2..f22c243e 100644
+--- a/gframe/game.cpp
++++ b/gframe/game.cpp
+@@ -40,6 +40,10 @@
+ #include "porting.h"
+ #include "fmt.h"
+ 
++#ifdef WITH_REPLAY2VIDEO
++#include "replay2video/replay2video_integration.h"
++#endif
++
+ #if EDOPRO_ANDROID || EDOPRO_IOS
+ #include "CGUICustomComboBox/CGUICustomComboBox.h"
+ #define DispatchQueue() porting::dispatchQueuedMessages()
+@@ -96,13 +100,26 @@ Game::~Game() {
+ 		filesystem->drop();
+ 	if(skinSystem)
+ 		delete skinSystem;
++	// imageManager.driver is used in ~ImageManager but device (and its GL context)
++	// is destroyed before imageManager (device is declared later in game.h).
++	// Null the driver before device drops so removeTexture isn't called on a dead context.
++	imageManager.ClearDriver();
+ }
+ 
+ void Game::Initialize() {
++#ifdef WITH_REPLAY2VIDEO
++	if(replay2video::g_batch.active) { fprintf(stderr, "[r2v] Initialize() start\n"); fflush(stderr); }
++#endif
+ 	dpi_scale = gGameConfig->dpi_scale;
+ 	duel_param = gGameConfig->lastDuelParam;
++#ifdef WITH_REPLAY2VIDEO
++	if(replay2video::g_batch.active) { fprintf(stderr, "[r2v] before CreateDevice\n"); fflush(stderr); }
++#endif
+ 	if(!device)
+ 		device = GUIUtils::CreateDevice(gGameConfig);
++#ifdef WITH_REPLAY2VIDEO
++	if(replay2video::g_batch.active) { fprintf(stderr, "[r2v] after CreateDevice device=%p\n", (void*)device.get()); fflush(stderr); }
++#endif
+ #if !EDOPRO_ANDROID && !EDOPRO_IOS
+ 	device->enableDragDrop(true, [](irr::core::vector2di pos, bool isFile) ->bool {
+ 		if(isFile) {
+@@ -134,6 +151,16 @@ void Game::Initialize() {
+ #endif
+ #if IRRLICHT_VERSION_MAJOR == 1 && IRRLICHT_VERSION_MINOR == 9
+ 	device->toggleTouchEventMouseTranslation(true, 15 * dpi_scale);
++#endif
++#ifdef WITH_REPLAY2VIDEO
++	if(replay2video::g_batch.active) {
++		fprintf(stderr, "[r2v] before ShowWindow\n"); fflush(stderr);
++		auto exposed = device->getVideoDriver()->getExposedVideoData();
++		auto hwnd = reinterpret_cast<HWND>(exposed.OpenGLWin32.HWnd);
++		if(hwnd)
++			ShowWindow(hwnd, SW_HIDE);
++		fprintf(stderr, "[r2v] after ShowWindow\n"); fflush(stderr);
++	}
+ #endif
+ 	filesystem = device->getFileSystem();
+ 	filesystem->grab();
+@@ -2041,9 +2068,19 @@ bool Game::MainLoop() {
+ 		gSoundManager->Tick();
+ 		fps++;
+ 		auto now = timer->getRealTime();
+-		delta_time = now - prev_time;
+-		prev_time = now;
+-		cur_time += delta_time;
++#ifdef WITH_REPLAY2VIDEO
++		if(replay2video::g_batch.active) {
++			delta_time = replay2video::g_batch.frame_time_ms;
++			prev_time += delta_time;
++			cur_time = prev_time;
++			replay2video::g_batch.AdvanceVirtualTime();
++		} else
++#endif
++		{
++			delta_time = now - prev_time;
++			prev_time = now;
++			cur_time += delta_time;
++		}
+ 		gJWrapper->ProcessEvents();
+ 		bool resized = false;
+ 		auto size = driver->getScreenSize();
+@@ -2088,6 +2125,19 @@ bool Game::MainLoop() {
+ 		atkdy = (float)sin(atkframe);
+ 		driver->beginScene(true, true, irr::video::SColor(0, 0, 0, 0));
+ 		gMutex.lock();
++#ifdef WITH_REPLAY2VIDEO
++		if(replay2video::g_batch.active && !replay2video::g_batch.replay_finished && dInfo.isInDuel) {
++			gMutex.unlock();
++			actionSignal.SetNoWait(true);
++			closeDoneSignal.SetNoWait(true);
++			frameSignal.SetNoWait(true);
++			ReplayMode::StepBatch();
++			frameSignal.SetNoWait(false);
++			actionSignal.SetNoWait(false);
++			closeDoneSignal.SetNoWait(false);
++			gMutex.lock();
++		}
++#endif
+ 		if(dInfo.isInDuel) {
+ 			if(dInfo.isReplay)
+ 				discord.UpdatePresence(DiscordWrapper::REPLAY);
+@@ -2166,6 +2216,11 @@ bool Game::MainLoop() {
+ 		wBtnSettings->setVisible(!(is_building || is_siding || dInfo.isInDuel || open_file));
+ 		DrawGUI();
+ 		DrawSpec();
++#ifdef WITH_REPLAY2VIDEO
++		if(replay2video::g_batch.active) {
++			replay2video::g_integration.ProcessFrame(driver);
++		}
++#endif
+ 		if(cardimagetextureloading) {
+ 			ShowCardInfo(showingcard);
+ 		}
+@@ -2187,6 +2242,11 @@ bool Game::MainLoop() {
+ 		}
+ 		driver->endScene();
+ 		gMutex.unlock();
++#ifdef WITH_REPLAY2VIDEO
++		if(replay2video::g_batch.active && replay2video::g_integration.IsFinished()) {
++			break;
++		}
++#endif
+ 		if(closeDuelWindow)
+ 			CloseDuelWindow();
+ 		if (DuelClient::try_needed) {
+@@ -2321,6 +2381,11 @@ bool Game::MainLoop() {
+ 	SingleMode::StopPlay(true);
+ 	ReplayMode::StopReplay(true);
+ 	ClearTextures();
++#ifdef WITH_REPLAY2VIDEO
++	if(replay2video::g_batch.active) {
++		replay2video::g_batch.Stop();
++	}
++#endif
+ 	SaveConfig();
+ #ifdef YGOPRO_BUILD_DLL
+ 	UnloadCore(ocgcore);

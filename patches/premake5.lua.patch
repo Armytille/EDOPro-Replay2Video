@@ -1,0 +1,45 @@
+diff --git a/gframe/premake5.lua b/gframe/premake5.lua
+index d644c1c1..561a512a 100644
+--- a/gframe/premake5.lua
++++ b/gframe/premake5.lua
+@@ -2,12 +2,24 @@ local _includedirs=includedirs
+ if _ACTION=="xcode4" then
+ 	_includedirs=sysincludedirs
+ end
++
++newoption {
++	trigger = "with-replay2video",
++	description = "Enable replay-to-video batch rendering mode (requires FFmpeg dev libs)"
++}
++
+ local ygopro_config=function(static_core)
+ 	kind "WindowedApp"
+ 	cppdialect "C++17"
+ 	rtti "Off"
+ 	files { "**.cpp", "**.cc", "**.c", "**.h", "**.hpp" }
+-	excludes { "lzma/**", "SoundBackends/**", "sfAudio/**", "Android/**" }
++	excludes { "lzma/**", "SoundBackends/**", "sfAudio/**", "Android/**", "replay2video/**" }
++
++	if _OPTIONS["with-replay2video"] then
++		files { "replay2video/**.cpp", "replay2video/**.h" }
++		defines "WITH_REPLAY2VIDEO"
++	end
++
+ 	if _OPTIONS["oldwindows"] then
+ 		filter {'action:vs*'}
+ 			files { "../overwrites/overwrites.cpp", "../overwrites/loader.asm" }
+@@ -243,6 +255,14 @@ local ygopro_config=function(static_core)
+ 			links "secur32"
+ 		end
+ 
++		if _OPTIONS["with-replay2video"] then
++			filter "system:windows"
++				_includedirs { os.getenv("FFMPEG_DEV") .. "/include" }
++				libdirs { os.getenv("FFMPEG_DEV") .. "/lib" }
++			filter {}
++			links { "avcodec", "avformat", "avutil", "swscale", "swresample" }
++		end
++
+ 	if static_core then
+ 		filter {}
+ 			links "lua"

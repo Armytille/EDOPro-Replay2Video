@@ -1,0 +1,12 @@
+diff --git a/gframe/image_manager.h b/gframe/image_manager.h
+index fad467ae..909c66ed 100644
+--- a/gframe/image_manager.h
++++ b/gframe/image_manager.h
+@@ -84,6 +84,7 @@ public:
+ 	void ChangeTextures(epro::path_stringview path);
+ 	void ResetTextures();
+ 	void SetDevice(irr::IrrlichtDevice* dev);
++	void ClearDriver() { driver = nullptr; }
+ 	void ClearTexture(bool resize = false);
+ 	void RefreshCachedTextures();
+ 	void ClearCachedTextures();

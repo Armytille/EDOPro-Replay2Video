@@ -1,0 +1,19 @@
+diff --git a/gframe/image_manager.cpp b/gframe/image_manager.cpp
+index aed71e8c..610e4c8d 100644
+--- a/gframe/image_manager.cpp
++++ b/gframe/image_manager.cpp
+@@ -66,9 +66,11 @@ ImageManager::~ImageManager() {
+ 		if(it.second)
+ 			it.second->drop();
+ 	}
+-	for(auto& it : g_txrCache) {
+-		if(it.second)
+-			driver->removeTexture(it.second);
++	if(driver) {
++		for(auto& it : g_txrCache) {
++			if(it.second)
++				driver->removeTexture(it.second);
++		}
+ 	}
+ }
+ irr::video::ITexture* ImageManager::loadTextureFixedSize(epro::path_stringview texture_name, int width, int height) {

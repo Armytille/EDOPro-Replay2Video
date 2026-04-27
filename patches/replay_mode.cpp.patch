@@ -1,0 +1,175 @@
+diff --git a/gframe/replay_mode.cpp b/gframe/replay_mode.cpp
+index a396a112..7d82788c 100644
+--- a/gframe/replay_mode.cpp
++++ b/gframe/replay_mode.cpp
+@@ -7,6 +7,11 @@
+ #include "single_mode.h"
+ #include "sound_manager.h"
+ 
++#ifdef WITH_REPLAY2VIDEO
++#include <iostream>
++#include "replay2video/replay2video_integration.h"
++#endif
++
+ namespace ygo {
+ 
+ void* ReplayMode::pduel = 0;
+@@ -74,6 +79,90 @@ void ReplayMode::Pause(bool is_pause, bool is_step) {
+ 		mainGame->actionSignal.Set();
+ 	}
+ }
++#ifdef WITH_REPLAY2VIDEO
++std::vector<CoreUtils::Packet>::const_iterator ReplayMode::batch_it;
++
++void ReplayMode::ReplayThreadBatchWrapper() {
++	// Intentionally empty — batch mode uses InitBatch()/StepBatch() from the main thread.
++}
++
++bool ReplayMode::InitBatch() {
++	// Mirror the setup ReplayThread does before its packet loop, but without spawning a thread.
++	mainGame->dField.Clear();
++	mainGame->dInfo.isReplay = true;
++	mainGame->dInfo.isFirst = true;
++	mainGame->dInfo.isTeam1 = true;
++	mainGame->dInfo.isRelay = !!(cur_replay.params.duel_flags & DUEL_RELAY);
++	const auto& replay_header = cur_replay.pheader;
++	mainGame->dInfo.isSingleMode = !!(replay_header.base.flag & REPLAY_SINGLE_MODE);
++	mainGame->dInfo.isHandTest = !!(replay_header.base.flag & REPLAY_HAND_TEST);
++	mainGame->dInfo.compat_mode = !(replay_header.base.flag & REPLAY_LUA64);
++	mainGame->dInfo.legacy_race_size = GET_CORE_VERSION_MAJOR(replay_header.base.version) < 10;
++	mainGame->dInfo.team1 = cur_replay.GetPlayersCount(0);
++	mainGame->dInfo.team2 = cur_replay.GetPlayersCount(1);
++	mainGame->dInfo.current_player[0] = 0;
++	mainGame->dInfo.current_player[1] = 0;
++	if(!mainGame->dInfo.isRelay)
++		mainGame->dInfo.current_player[1] = mainGame->dInfo.team2 - 1;
++	const auto& names = cur_replay.GetPlayerNames();
++	const auto first_oppo = names.begin() + mainGame->dInfo.team1;
++	mainGame->dInfo.selfnames.assign(names.begin(), first_oppo);
++	mainGame->dInfo.opponames.assign(first_oppo, names.end());
++	mainGame->dInfo.duel_params = cur_replay.params.duel_flags;
++	mainGame->dInfo.duel_field = mainGame->GetMasterRule(mainGame->dInfo.duel_params);
++	matManager.SetActiveVertices(mainGame->dInfo.HasFieldFlag(DUEL_3_COLUMNS_FIELD),
++	                             !mainGame->dInfo.HasFieldFlag(DUEL_SEPARATE_PZONE));
++	mainGame->SetPhaseButtons();
++	mainGame->dInfo.isInDuel = true;
++	mainGame->dInfo.isStarted = true;
++	mainGame->dInfo.checkRematch = false;
++	mainGame->SetMessageWindow();
++	mainGame->dInfo.turn = 0;
++	mainGame->dInfo.isCatchingUp = false;
++	is_continuing = true;
++	skip_step = 0;
++	exit_pending = false;
++	current_step = 0;
++	skip_turn = 0;
++	yrp = false;
++	is_swapping = false;
++	is_pausing = false;
++	is_paused = false;
++	is_restarting = false;
++	auto& current_stream = cur_replay.packets_stream;
++	if(current_stream.empty())
++		return false;
++	batch_it = current_stream.begin();
++	return true;
++}
++
++bool ReplayMode::StepBatch() {
++	// Called once per frame from MainLoop while gMutex is held and isCatchingUp=true.
++	// Advances through packets until the next pauseable one, so MainLoop can render a frame.
++	// Returns true if more packets remain, false when done.
++	auto& current_stream = cur_replay.packets_stream;
++	if(!is_continuing || exit_pending || is_restarting || batch_it == current_stream.end()) {
++		if(is_continuing && !is_restarting) EndDuel();
++		return false;
++	}
++	// Consume packets until we hit a pauseable one (i.e. one that would have triggered
++	// actionSignal.Wait in normal replay mode). Non-pauseable msgs are processed immediately.
++	// We detect pauseable by checking if ReplayAnalyze incremented current_step.
++	auto prev_step = current_step;
++	do {
++		is_continuing = ReplayAnalyze(*batch_it);
++		++batch_it;
++		if(!is_continuing || is_restarting || batch_it == current_stream.end())
++			break;
++	} while(current_step == prev_step); // loop while non-pauseable (step didn't advance)
++	if(!is_restarting && (!is_continuing || batch_it == current_stream.end())) {
++		EndDuel();
++		return false;
++	}
++	return !is_restarting;
++}
++#endif
++
+ int ReplayMode::ReplayThread() {
+ 	Utils::SetThreadName("ReplayMode");
+ 	mainGame->dInfo.isReplay = true;
+@@ -105,6 +194,12 @@ int ReplayMode::ReplayThread() {
+ 		EndDuel();
+ 		return 0;
+ 	}
++#ifdef WITH_REPLAY2VIDEO
++	if(replay2video::g_batch.active) {
++		ReplayThreadBatchWrapper();
++		return 0;
++	}
++#endif
+ 	mainGame->dInfo.isInDuel = true;
+ 	mainGame->dInfo.isStarted = true;
+ 	mainGame->dInfo.checkRematch = false;
+@@ -153,6 +248,15 @@ void ReplayMode::EndDuel() {
+ 		OCG_DestroyDuel(pduel);
+ 		pduel = nullptr;
+ 	}
++#ifdef WITH_REPLAY2VIDEO
++	if(replay2video::g_batch.active) {
++		mainGame->dInfo.isInDuel = false;
++		mainGame->dInfo.isStarted = false;
++		mainGame->dInfo.isReplay = false;
++		replay2video::g_batch.replay_finished = true;
++		return;
++	}
++#endif
+ 	if(!is_closing) {
+ 		std::unique_lock<epro::mutex> lock(mainGame->gMutex);
+ 		mainGame->stMessage->setText(gDataManager->GetSysString(1501).data());
+@@ -228,6 +332,13 @@ bool ReplayMode::ReplayAnalyze(const CoreUtils::Packet& p) {
+ 		mainGame->dInfo.curMsg = p.message;
+ 		switch (mainGame->dInfo.curMsg) {
+ 		case MSG_RETRY: {
++#ifdef WITH_REPLAY2VIDEO
++			if(replay2video::g_batch.active) {
++				std::cerr << "[replay2video] Replay retry error in batch mode, aborting.\n";
++				replay2video::g_batch.replay_finished = true;
++				return false;
++			}
++#endif
+ 			if(mainGame->dInfo.isCatchingUp) {
+ 				mainGame->dInfo.isCatchingUp = false;
+ 				mainGame->dField.RefreshAllCards();
+@@ -240,6 +351,11 @@ bool ReplayMode::ReplayAnalyze(const CoreUtils::Packet& p) {
+ 			return false;
+ 		}
+ 		case MSG_WIN: {
++#ifdef WITH_REPLAY2VIDEO
++			if(replay2video::g_batch.active) {
++				return false;
++			}
++#endif
+ 			if(!yrp || !cur_yrp || !(cur_yrp->pheader.base.flag & REPLAY_HAND_TEST)) {
+ 				if (mainGame->dInfo.isCatchingUp) {
+ 					mainGame->dInfo.isCatchingUp = false;
+@@ -301,6 +417,12 @@ bool ReplayMode::ReplayAnalyze(const CoreUtils::Packet& p) {
+ 		}
+ 		DuelClient::ClientAnalyze(p);
+ 		if(pauseable) {
++#ifdef WITH_REPLAY2VIDEO
++			if(replay2video::g_batch.active) {
++				current_step++;
++				return true;
++			}
++#endif
+ 			current_step++;
+ 			if(skip_step) {
+ 				skip_step--;

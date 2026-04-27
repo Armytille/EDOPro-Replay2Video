@@ -1,0 +1,79 @@
+#pragma once
+
+#include <cstdint>
+#include <string>
+#include <atomic>
+#include <memory>
+
+#ifdef WITH_REPLAY2VIDEO
+
+struct AVFrame;
+struct SwsContext;
+
+namespace irr {
+namespace video {
+class IVideoDriver;
+}
+}
+
+namespace ygo {
+namespace replay2video {
+
+struct RenderConfig {
+    std::string input_replay;
+    std::string output_video;
+    std::string workdir;
+    int width = 1920;
+    int height = 1080;
+    int fps = 60;
+    int crf = 23;
+    std::string preset = "veryfast";
+    std::string codec = "libx264";
+    int bitrate_kbps = 0; // 0 = use CRF
+    bool dry_run = false;
+    int dry_run_frames = 10;
+    int dry_run_save_frame = 5;
+
+    bool ParseArgs(int argc, wchar_t* argv[]);
+    bool LoadIni(const std::string& path);
+    void Normalize();
+};
+
+struct BatchState {
+    std::atomic<bool> active{false};
+    std::atomic<bool> request_stop{false};
+    std::atomic<bool> replay_finished{false};
+    std::atomic<bool> replay_started{false};
+    std::atomic<uint64_t> frame_count{0};
+    std::atomic<uint64_t> virtual_time_ms{0};
+    int target_fps = 60;
+    int frame_time_ms = 16;
+    uint64_t max_frames = 0; // 0 = unlimited
+    RenderConfig config;
+
+    void Start(const RenderConfig& cfg);
+    void Stop();
+    uint64_t AdvanceVirtualTime();
+};
+
+extern BatchState g_batch;
+
+class VideoEncoder;
+class FrameCapture;
+
+struct Integration {
+    std::unique_ptr<VideoEncoder> encoder;
+    std::unique_ptr<FrameCapture> capture;
+
+    bool Initialize();
+    void Shutdown();
+    bool ProcessFrame(irr::video::IVideoDriver* driver);
+    bool IsFinished() const;
+};
+
+extern Integration g_integration;
+
+} // namespace replay2video
+} // namespace ygo
+
+#endif // WITH_REPLAY2VIDEO

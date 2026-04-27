@@ -1,0 +1,44 @@
+# EDOPro Replay2Video Configuration File
+# Place this file in the same directory as the executable and rename to config.ini.
+# All values are optional; missing keys use the built-in defaults shown below.
+
+# Output resolution. Common presets:
+#   1280x720   = 720p
+#   1920x1080  = 1080p (default)
+#   2560x1440  = 1440p
+#   3840x2160  = 4K
+# You can also specify any custom WxH.
+resolution=1920x1080
+
+# Target frame rate. EDOPro animations are designed for 60 fps.
+# Lower values (30) render faster but may look less smooth.
+# Higher values (120, 240) are supported but increase file size.
+fps=60
+
+# Constant Rate Factor for x264/x265. Range: 0 (lossless) to 51 (worst).
+# 23 is the x264 default and offers a good quality/size balance.
+# 18 is visually nearly lossless. 28 is acceptable for web sharing.
+crf=23
+
+# Encoding preset: trade-off between speed and compression efficiency.
+#   ultrafast  - fastest, largest file
+#   veryfast   - fast, good for batch rendering (default)
+#   medium     - balanced
+#   slow       - smaller file, much slower
+#   veryslow   - best compression, impractical for long replays
+preset=veryfast
+
+# Video codec.
+#   libx264    = software H.264, compatible everywhere (default)
+#   h264_nvenc = NVIDIA GPU hardware encoding, much faster
+#   libx265    = software HEVC/H.265, smaller files, slower, less compatible
+codec=libx264
+
+# Fixed bitrate override (optional). If set, CRF is ignored.
+# Example: 8000 = 8 Mbps. Useful when you need a guaranteed file size.
+# bitrate=8000
+
+# Working directory: path to your EDOPro installation.
+# This folder must contain: pics/, textures/, skin/, fonts/, cards.cdb
+# If omitted, the executable's directory is used.
+# workdir=C:\Games\EDOPro

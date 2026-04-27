@@ -1,0 +1,31 @@
+diff --git a/gframe/utils_gui.cpp b/gframe/utils_gui.cpp
+index 35570b79..b9fa4915 100644
+--- a/gframe/utils_gui.cpp
++++ b/gframe/utils_gui.cpp
+@@ -36,6 +36,10 @@ static inline bool try_guess_wayland() {
+ }
+ #endif //EDOPRO_WINDOWS
+ 
++#ifdef WITH_REPLAY2VIDEO
++extern int g_r2v_window_width, g_r2v_window_height;
++#endif
++
+ namespace ygo {
+ 
+ #if EDOPRO_WINDOWS
+@@ -111,7 +115,15 @@ std::shared_ptr<irr::IrrlichtDevice> GUIUtils::CreateDevice(GameConfig* configs)
+ #endif
+ #endif
+ #if !EDOPRO_ANDROID
++#ifdef WITH_REPLAY2VIDEO
++	fprintf(stderr, "[r2v] CreateDevice: g_r2v_window_width=%d g_r2v_window_height=%d\n", g_r2v_window_width, g_r2v_window_height); fflush(stderr);
++	if(g_r2v_window_width > 0 && g_r2v_window_height > 0)
++		params.WindowSize = { (irr::u32)g_r2v_window_width, (irr::u32)g_r2v_window_height };
++	else
++		params.WindowSize = { (irr::u32)(1024 * configs->dpi_scale), (irr::u32)(640 * configs->dpi_scale) };
++#else
+ 	params.WindowSize = { (irr::u32)(1024 * configs->dpi_scale), (irr::u32)(640 * configs->dpi_scale) };
++#endif
+ #else
+ 	params.PrivateData = porting::app_global;
+ 	params.Bits = 24;

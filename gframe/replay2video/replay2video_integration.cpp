@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <fstream>
 #include <sstream>
+#include <cstdio>
 #include <cstring>
 #include <iostream>
 
@@ -108,6 +109,10 @@ bool RenderConfig::ParseArgs(int argc, wchar_t* argv[]) {
             hwaccel_device = s;
         } else if (arg == L"--dry-run") {
             dry_run = true;
+        } else if (arg == L"--margin") {
+            std::string s;
+            if (!next(s)) return false;
+            margin = std::stof(s);
         }
     }
     return true;
@@ -149,6 +154,7 @@ bool RenderConfig::LoadIni(const std::string& path) {
             else if (key == "hwaccel") hwaccel = val;
             else if (key == "hwaccel_device") hwaccel_device = val;
             else if (key == "speed") speed = std::stof(val);
+            else if (key == "margin") margin = std::stof(val);
         } catch (...) {
             // Ignore malformed values
         }
@@ -203,6 +209,35 @@ void RenderConfig::Normalize() {
     if (codec.empty()) codec = "libx264";
     if (scale_filter.empty()) scale_filter = "bilinear";
     if (speed <= 0.0f) speed = 1.0f;
+
+    // Force even output dimensions (required for YUV420P and margin math).
+    width  = (width  / 2) * 2;
+    height = (height / 2) * 2;
+
+    // Build scale+pad margin filter when margin > 0.
+    if (margin < 0.0f) margin = 0.0f;
+    if (margin > 0.45f) margin = 0.45f;
+
+    if (margin > 0.0f) {
+        int content_w = ((int)(width  * (1.0f - 2.0f * margin)) / 2) * 2;
+        int content_h = ((int)(height * (1.0f - 2.0f * margin)) / 2) * 2;
+        if (content_w < 2) content_w = 2;
+        if (content_h < 2) content_h = 2;
+        int x_off = (width  - content_w) / 2;
+        int y_off = (height - content_h) / 2;
+        char pad_filter[256];
+        snprintf(pad_filter, sizeof(pad_filter),
+                 "scale=%d:%d,pad=%d:%d:%d:%d:black",
+                 content_w, content_h, width, height, x_off, y_off);
+        if (!vf.empty()) {
+            vf = vf + "," + std::string(pad_filter);
+        } else {
+            vf = std::string(pad_filter);
+        }
+        std::cout << "[replay2video] Margin " << (int)(margin * 100)
+                  << "% each side: content area " << content_w << "x" << content_h
+                  << " -> padded to " << width << "x" << height << "\n";
+    }
 }
 
 void BatchState::Start(const RenderConfig& cfg) {

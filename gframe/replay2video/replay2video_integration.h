@@ -39,8 +39,14 @@ struct RenderConfig {
     std::string hwaccel = ""; // hardware acceleration (e.g., "vulkan")
     std::string hwaccel_device = ""; // hwaccel device (e.g., "0")
     float speed = 1.0f; // playback speed multiplier: 1.0=normal, 1.3=30% faster
-    float margin = 0.10f; // left+right margin as fraction of output width (0.10 = 10% each side)
-    float interface_scale = 1.0f; // interface scale multiplier (1.0 = 1024×640, 2.0 = 2048×1280, etc.)
+    float margin = 0.10f; // background margin: 0=field fills screen, 0.10=10% background each side
+    float cam_offset_x = 4.0f; // camera X position and target X (4.0 centers left/right content)
+    float cam_offset_y = 0.7f; // vertical camera target Y offset to balance both players' hands
+    // Camera frustum computed by Normalize() for batch centering; 0 = use EDOPro defaults
+    float cam_left = 0.0f;
+    float cam_right = 0.0f;
+    float cam_top = 0.0f;
+    float cam_bottom = 0.0f;
     bool dry_run = false;
     int dry_run_frames = 10;
     int dry_run_save_frame = 5;

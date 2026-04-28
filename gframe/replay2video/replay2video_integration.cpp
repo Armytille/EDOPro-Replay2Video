@@ -113,10 +113,10 @@ bool RenderConfig::ParseArgs(int argc, wchar_t* argv[]) {
             std::string s;
             if (!next(s)) return false;
             margin = std::stof(s);
-        } else if (arg == L"--interface-scale") {
+        } else if (arg == L"--cam-offset-y") {
             std::string s;
             if (!next(s)) return false;
-            interface_scale = std::stof(s);
+            cam_offset_y = std::stof(s);
         }
     }
     return true;
@@ -159,7 +159,7 @@ bool RenderConfig::LoadIni(const std::string& path) {
             else if (key == "hwaccel_device") hwaccel_device = val;
             else if (key == "speed") speed = std::stof(val);
             else if (key == "margin") margin = std::stof(val);
-            else if (key == "interface_scale") interface_scale = std::stof(val);
+            else if (key == "cam_offset_y") cam_offset_y = std::stof(val);
         } catch (...) {
             // Ignore malformed values
         }
@@ -171,16 +171,10 @@ void RenderConfig::Normalize() {
     if (width < 640) width = 640;
     if (height < 480) height = 480;
 
-    // Determine Irrlicht window size. For interface_scale > 1.0, use scaled 1024x640 base.
-    // Otherwise, auto-detect desktop resolution (clamped to output for compatibility).
-    if (interface_scale > 1.0f) {
-        render_width = static_cast<int>(width * interface_scale);
-        render_height = static_cast<int>(height * interface_scale);
-        margin = 0.0f; // No margins when filling screen to avoid black bands
-        std::cout << "[replay2video] Interface scale " << interface_scale
-                  << "x: render window " << render_width << "x" << render_height
-                  << " (fill " << width << "x" << height << " without margins)\n";
-    } else if (render_width <= 0 || render_height <= 0) {
+    // Determine Irrlicht window size. OpenGL backbuffers on Windows are capped to the
+    // desktop resolution by DWM — rendering beyond the monitor size produces black pixels.
+    // If render_width/height are not set, auto-detect the desktop resolution and clamp.
+    if (render_width <= 0 || render_height <= 0) {
 #ifdef _WIN32
         int desk_w = GetSystemMetrics(SM_CXSCREEN);
         int desk_h = GetSystemMetrics(SM_CYSCREEN);
@@ -221,34 +215,46 @@ void RenderConfig::Normalize() {
     if (scale_filter.empty()) scale_filter = "bilinear";
     if (speed <= 0.0f) speed = 1.0f;
 
-    // Force even output dimensions (required for YUV420P and margin math).
+    // Force even output dimensions (required for YUV420P).
     width  = (width  / 2) * 2;
     height = (height / 2) * 2;
 
-    // Build scale+pad margin filter when margin > 0.
-    if (margin < 0.0f) margin = 0.0f;
+    // Compute a centered camera frustum for batch mode.
+    //
+    // EDOPro's default frustum (CAMERA_LEFT=-0.90, CAMERA_RIGHT=0.45) is asymmetric:
+    // the field is pushed left to leave room for the UI panels on the right.
+    // In batch/video mode there are no UI panels, so we center the frustum.
+    //
+    // Default frustum half-width  = (0.45 - (-0.90)) / 2 = 0.675
+    // Default frustum half-height = (0.42 - (-0.42)) / 2 = 0.42
+    //
+    // The default frustum was designed for 1024x640 (ratio 1.6). For a different
+    // output ratio we scale the horizontal half accordingly so pixels stay square.
+    //
+    // `margin` (default 0.10) expands the frustum outward so the background is
+    // visible around the field. The field always fits fully — margin only adds space.
+    if (margin < -0.45f) margin = -0.45f;
     if (margin > 0.45f) margin = 0.45f;
-
-    if (margin > 0.0f) {
-        int content_w = ((int)(width  * (1.0f - 2.0f * margin)) / 2) * 2;
-        int content_h = ((int)(height * (1.0f - 2.0f * margin)) / 2) * 2;
-        if (content_w < 2) content_w = 2;
-        if (content_h < 2) content_h = 2;
-        int x_off = (width  - content_w) / 2;
-        int y_off = (height - content_h) / 2;
-        char pad_filter[256];
-        snprintf(pad_filter, sizeof(pad_filter),
-                 "scale=%d:%d,pad=%d:%d:%d:%d:black",
-                 content_w, content_h, width, height, x_off, y_off);
-        if (!vf.empty()) {
-            vf = vf + "," + std::string(pad_filter);
-        } else {
-            vf = std::string(pad_filter);
-        }
-        std::cout << "[replay2video] Margin " << (int)(margin * 100)
-                  << "% each side: content area " << content_w << "x" << content_h
-                  << " -> padded to " << width << "x" << height << "\n";
+    {
+        // Analytically tight frustum that fits the full field + hands with no cropping,
+        // centered on cam_offset_y=0.7 (balanced between player 1 and player 2 hands).
+        // Derived by projecting the bounding box of all field content through the camera.
+        // Camera: pos=(4.2, 8.0, 7.8), target=(4.2, 0.7, 0), up=(0,0,1), near=1.
+        //   tight half_h = 0.2564  (balances ndc_p1=+0.611 vs ndc_p2=-0.605)
+        //   tight half_w = 0.4491  (extra deck left is the widest content)
+        // margin expands the frustum outward to reveal background around the field.
+        const float tight_half_h = 0.2850f; // includes card half-height at hand positions
+        const float tight_half_w = 0.4472f; // balanced: cam_x=4.0 centers left/right content
+        const float half_h = tight_half_h * (1.0f + 2.0f * margin);
+        const float half_w = tight_half_w * (1.0f + 2.0f * margin);
+        cam_left   = -half_w;
+        cam_right  =  half_w;
+        cam_bottom = -half_h;
+        cam_top    =  half_h;
     }
+    std::cout << "[replay2video] margin=" << (int)(margin * 100)
+              << "% -> frustum [" << cam_left << ", " << cam_right
+              << "] x [" << cam_bottom << ", " << cam_top << "]\n";
 }
 
 void BatchState::Start(const RenderConfig& cfg) {
@@ -287,10 +293,12 @@ bool Integration::Initialize() {
         std::cerr << "[replay2video] FrameCapture init failed\n";
         return false;
     }
-    encoder = std::make_unique<VideoEncoder>();
-    if (!encoder->Initialize(g_batch.config)) {
-        std::cerr << "[replay2video] VideoEncoder init failed\n";
-        return false;
+    if (!g_batch.config.dry_run) {
+        encoder = std::make_unique<VideoEncoder>();
+        if (!encoder->Initialize(g_batch.config)) {
+            std::cerr << "[replay2video] VideoEncoder init failed\n";
+            return false;
+        }
     }
     if (g_batch.frames_per_sim > 1) {
         std::cout << "[replay2video] Frame doubling: sim=" << g_batch.config.sim_fps

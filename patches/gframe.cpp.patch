@@ -1,169 +1,35 @@
 diff --git a/gframe/gframe.cpp b/gframe/gframe.cpp
-index 7fa63fcc..ea494aa8 100644
+index ea494aa8..68cdbbb1 100644
 --- a/gframe/gframe.cpp
 +++ b/gframe/gframe.cpp
-@@ -3,6 +3,7 @@
- #include <IrrlichtDevice.h>
- #include <IGUIButton.h>
- #include <IGUICheckBox.h>
-+#include <IGUIContextMenu.h>
- #include <IGUIEditBox.h>
- #include <IGUIWindow.h>
- #include <IGUIEnvironment.h>
-@@ -14,6 +15,16 @@
- #include "data_handler.h"
- #include "logging.h"
- #include "game.h"
-+#ifdef WITH_REPLAY2VIDEO
-+#include <iostream>
-+#include "replay2video/replay2video_integration.h"
-+#include "replay_mode.h"
-+#if EDOPRO_WINDOWS
-+#define WIN32_LEAN_AND_MEAN
-+#include <windows.h>
-+#include <shellapi.h>
-+#endif
-+#endif
- #include "log.h"
- #include "joystick_wrapper.h"
- #include "utils_gui.h"
-@@ -36,6 +47,11 @@ ygo::RepoManager* ygo::gRepoManager = nullptr;
- ygo::DeckManager* ygo::gdeckManager = nullptr;
- ygo::ClientUpdater* ygo::gClientUpdater = nullptr;
- JWrapper* gJWrapper = nullptr;
-+#ifdef WITH_REPLAY2VIDEO
-+static bool s_batch_mode_detected = false;
-+int g_r2v_window_width = 0;
-+int g_r2v_window_height = 0;
-+#endif
- 
- namespace {
- void CheckArguments(const args_t& args) {
-@@ -139,6 +155,30 @@ int edopro_main(const args_t& args) {
- 	show_changelog = args[LAUNCH_PARAM::CHANGELOG].enabled;
- 	ygo::ClientUpdater updater(args[LAUNCH_PARAM::OVERRIDE_UPDATE_URL].argument);
- 	ygo::gClientUpdater = &updater;
-+#ifdef WITH_REPLAY2VIDEO
-+	{
-+		int r2v_argc_pre = 0;
-+		wchar_t** r2v_argv_pre = CommandLineToArgvW(GetCommandLineW(), &r2v_argc_pre);
-+		if(r2v_argv_pre && r2v_argc_pre > 1) {
-+			ygo::replay2video::RenderConfig r2v_cfg_pre;
-+			r2v_cfg_pre.ParseArgs(r2v_argc_pre, r2v_argv_pre);
-+			r2v_cfg_pre.Normalize();
-+			LocalFree(r2v_argv_pre);
-+			if(!r2v_cfg_pre.input_replay.empty()) {
-+				s_batch_mode_detected = true;
-+				g_r2v_window_width = r2v_cfg_pre.render_width;
-+				g_r2v_window_height = r2v_cfg_pre.render_height;
-+				if(!r2v_cfg_pre.workdir.empty()) {
-+					if(!ygo::Utils::SetWorkingDirectory(ygo::Utils::ToPathString(r2v_cfg_pre.workdir))) {
-+						std::cerr << "[replay2video] Failed to set workdir: " << r2v_cfg_pre.workdir << "\n";
-+					}
-+				}
-+			}
-+		} else if(r2v_argv_pre) {
-+			LocalFree(r2v_argv_pre);
-+		}
-+	}
-+#endif
- 	std::unique_ptr<ygo::DataHandler> data{ nullptr };
- 	try {
- 		data = std::make_unique<ygo::DataHandler>();
-@@ -156,10 +196,12 @@ int edopro_main(const args_t& args) {
- 		ygo::GUIUtils::ShowErrorWindow("Initialization fail", text);
- 		return EXIT_FAILURE;
- 	}
-+	fprintf(stderr, "[r2v] A\n"); fflush(stderr);
- 	if (!data->configs->noClientUpdates)
- 		updater.CheckUpdates();
-+	fprintf(stderr, "[r2v] B\n"); fflush(stderr);
- #if EDOPRO_WINDOWS
--	if(!data->configs->showConsole) {
-+	if(!data->configs->showConsole && !s_batch_mode_detected) {
- 		FILE* fDummy;
- #ifdef _MSC_VER
- 		freopen_s(&fDummy, "NUL", "r", stdin);
-@@ -179,7 +221,38 @@ int edopro_main(const args_t& args) {
- 		ygo::mainGame->gSettings.chkFullscreen->setChecked(ygo::gGameConfig->fullscreen);
- 	});
- #endif
-+	fprintf(stderr, "[r2v] C\n"); fflush(stderr);
- 	srand(static_cast<uint32_t>(time(nullptr)));
-+#ifdef WITH_REPLAY2VIDEO
-+	{
-+		int r2v_argc = 0;
-+		wchar_t** r2v_argv = CommandLineToArgvW(GetCommandLineW(), &r2v_argc);
-+		if(r2v_argv && r2v_argc > 1) {
-+			ygo::replay2video::RenderConfig r2v_cfg;
-+			r2v_cfg.ParseArgs(r2v_argc, r2v_argv);
-+			r2v_cfg.LoadIni("config.ini");
-+			r2v_cfg.Normalize();
-+			LocalFree(r2v_argv);
-+			if(!r2v_cfg.input_replay.empty()) {
-+				if(!r2v_cfg.workdir.empty()) {
-+					if(!ygo::Utils::SetWorkingDirectory(ygo::Utils::ToPathString(r2v_cfg.workdir))) {
-+						std::cerr << "[replay2video] Failed to set workdir: " << r2v_cfg.workdir << "\n";
-+					}
-+				}
-+				if(r2v_cfg.output_video.empty() && !r2v_cfg.dry_run)
-+					r2v_cfg.output_video = "output.mp4";
-+				ygo::replay2video::g_batch.Start(r2v_cfg);
-+				ygo::gGameConfig->antialias = 0;
-+				ygo::gGameConfig->maxFPS = r2v_cfg.fps;
-+			}
-+		} else if(r2v_argv) {
-+			LocalFree(r2v_argv);
-+		}
-+	}
-+#endif
-+#ifdef WITH_REPLAY2VIDEO
-+	fprintf(stderr, "[r2v] before do-loop, active=%d\n", (int)ygo::replay2video::g_batch.active); fflush(stderr);
-+#endif
- 	std::unique_ptr<JWrapper> joystick{ nullptr };
- 	bool firstlaunch = true;
- 	bool reset = false;
-@@ -187,6 +260,12 @@ int edopro_main(const args_t& args) {
- 		Game _game{};
- 		ygo::mainGame = &_game;
- 		std::swap(data->tmp_device, ygo::mainGame->device);
-+#ifdef WITH_REPLAY2VIDEO
-+		if(ygo::replay2video::g_batch.active) {
-+			fprintf(stderr, "[r2v] before Initialize, device=%p\n", (void*)ygo::mainGame->device.get());
-+			fflush(stderr);
-+		}
-+#endif
- 		try {
- 			ygo::mainGame->Initialize();
- 		}
-@@ -202,6 +281,30 @@ int edopro_main(const args_t& args) {
- 			gJWrapper = joystick.get();
- 			firstlaunch = false;
+@@ -283,24 +283,30 @@ int edopro_main(const args_t& args) {
  			CheckArguments(args);
-+#ifdef WITH_REPLAY2VIDEO
-+			if(ygo::replay2video::g_batch.active) {
-+				if(!ygo::replay2video::g_integration.Initialize()) {
-+					std::cerr << "[replay2video] Integration init failed.\n";
-+					return EXIT_FAILURE;
-+				}
-+				ygo::replay2video::g_integration.SetupFBO(ygo::mainGame->device->getVideoDriver());
-+				auto& cfg = ygo::replay2video::g_batch.config;
-+				if(!ygo::ReplayMode::cur_replay.OpenReplay(ygo::Utils::ToPathString(cfg.input_replay))) {
-+					std::cerr << "[replay2video] Failed to open replay: " << cfg.input_replay << "\n";
-+					return EXIT_FAILURE;
-+				}
-+				if(!ygo::ReplayMode::InitBatch()) {
-+					std::cerr << "[replay2video] Replay has no packets: " << cfg.input_replay << "\n";
-+					return EXIT_FAILURE;
-+				}
-+				ygo::gGameConfig->quick_animation = false;
-+				ygo::mainGame->wMainMenu->setVisible(false);
-+				ygo::mainGame->mTopMenu->setVisible(false);
-+				ygo::mainGame->MainLoop();
-+				ygo::replay2video::g_integration.Shutdown();
-+				return EXIT_SUCCESS;
-+			}
-+#endif
- 		}
- 		reset = ygo::mainGame->MainLoop();
- 		std::swap(data->tmp_device, ygo::mainGame->device);
+ #ifdef WITH_REPLAY2VIDEO
+ 			if(ygo::replay2video::g_batch.active) {
++				fprintf(stderr, "[r2v] Integration.Initialize()\n"); fflush(stderr);
+ 				if(!ygo::replay2video::g_integration.Initialize()) {
+ 					std::cerr << "[replay2video] Integration init failed.\n";
+ 					return EXIT_FAILURE;
+ 				}
++				fprintf(stderr, "[r2v] SetupFBO\n"); fflush(stderr);
+ 				ygo::replay2video::g_integration.SetupFBO(ygo::mainGame->device->getVideoDriver());
+ 				auto& cfg = ygo::replay2video::g_batch.config;
++				fprintf(stderr, "[r2v] OpenReplay: %s\n", cfg.input_replay.c_str()); fflush(stderr);
+ 				if(!ygo::ReplayMode::cur_replay.OpenReplay(ygo::Utils::ToPathString(cfg.input_replay))) {
+ 					std::cerr << "[replay2video] Failed to open replay: " << cfg.input_replay << "\n";
+ 					return EXIT_FAILURE;
+ 				}
++				fprintf(stderr, "[r2v] InitBatch\n"); fflush(stderr);
+ 				if(!ygo::ReplayMode::InitBatch()) {
+ 					std::cerr << "[replay2video] Replay has no packets: " << cfg.input_replay << "\n";
+ 					return EXIT_FAILURE;
+ 				}
++				fprintf(stderr, "[r2v] entering MainLoop\n"); fflush(stderr);
+ 				ygo::gGameConfig->quick_animation = false;
+ 				ygo::mainGame->wMainMenu->setVisible(false);
+ 				ygo::mainGame->mTopMenu->setVisible(false);
+ 				ygo::mainGame->MainLoop();
++				fprintf(stderr, "[r2v] MainLoop done\n"); fflush(stderr);
+ 				ygo::replay2video::g_integration.Shutdown();
+ 				return EXIT_SUCCESS;
+ 			}

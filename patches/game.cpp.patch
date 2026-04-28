@@ -1,167 +1,62 @@
 diff --git a/gframe/game.cpp b/gframe/game.cpp
-index faf909f2..361b1c87 100644
+index 361b1c87..431c32e1 100644
 --- a/gframe/game.cpp
 +++ b/gframe/game.cpp
-@@ -40,6 +40,10 @@
- #include "porting.h"
- #include "fmt.h"
- 
-+#ifdef WITH_REPLAY2VIDEO
-+#include "replay2video/replay2video_integration.h"
-+#endif
-+
- #if EDOPRO_ANDROID || EDOPRO_IOS
- #include "CGUICustomComboBox/CGUICustomComboBox.h"
- #define DispatchQueue() porting::dispatchQueuedMessages()
-@@ -96,13 +100,26 @@ Game::~Game() {
- 		filesystem->drop();
- 	if(skinSystem)
- 		delete skinSystem;
-+	// imageManager.driver is used in ~ImageManager but device (and its GL context)
-+	// is destroyed before imageManager (device is declared later in game.h).
-+	// Null the driver before device drops so removeTexture isn't called on a dead context.
-+	imageManager.ClearDriver();
- }
- 
- void Game::Initialize() {
-+#ifdef WITH_REPLAY2VIDEO
-+	if(replay2video::g_batch.active) { fprintf(stderr, "[r2v] Initialize() start\n"); fflush(stderr); }
-+#endif
- 	dpi_scale = gGameConfig->dpi_scale;
- 	duel_param = gGameConfig->lastDuelParam;
-+#ifdef WITH_REPLAY2VIDEO
-+	if(replay2video::g_batch.active) { fprintf(stderr, "[r2v] before CreateDevice\n"); fflush(stderr); }
-+#endif
- 	if(!device)
- 		device = GUIUtils::CreateDevice(gGameConfig);
-+#ifdef WITH_REPLAY2VIDEO
-+	if(replay2video::g_batch.active) { fprintf(stderr, "[r2v] after CreateDevice device=%p\n", (void*)device.get()); fflush(stderr); }
-+#endif
- #if !EDOPRO_ANDROID && !EDOPRO_IOS
- 	device->enableDragDrop(true, [](irr::core::vector2di pos, bool isFile) ->bool {
- 		if(isFile) {
-@@ -134,6 +151,36 @@ void Game::Initialize() {
- #endif
- #if IRRLICHT_VERSION_MAJOR == 1 && IRRLICHT_VERSION_MINOR == 9
- 	device->toggleTouchEventMouseTranslation(true, 15 * dpi_scale);
-+#endif
-+#ifdef WITH_REPLAY2VIDEO
-+	if(replay2video::g_batch.active) {
-+		auto exposed = device->getVideoDriver()->getExposedVideoData();
-+		auto hwnd = reinterpret_cast<HWND>(exposed.OpenGLWin32.HWnd);
-+		if(hwnd) {
-+			// Subclass the window to intercept any attempt to show it.
-+			static auto s_offscreen_wndproc = [](HWND h, UINT msg, WPARAM wp, LPARAM lp) -> LRESULT {
-+				if(msg == WM_SHOWWINDOW || msg == WM_WINDOWPOSCHANGING) {
-+					if(msg == WM_WINDOWPOSCHANGING) {
-+						auto* wp2 = reinterpret_cast<WINDOWPOS*>(lp);
-+						wp2->flags |= SWP_HIDEWINDOW;
-+						wp2->flags &= ~SWP_SHOWWINDOW;
-+					}
-+					return 0;
-+				}
-+				auto orig = reinterpret_cast<WNDPROC>(GetWindowLongPtrW(h, GWLP_USERDATA));
-+				return CallWindowProcW(orig, h, msg, wp, lp);
-+			};
-+			LONG_PTR orig = GetWindowLongPtrW(hwnd, GWLP_WNDPROC);
-+			SetWindowLongPtrW(hwnd, GWLP_USERDATA, orig);
-+			SetWindowLongPtrW(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(+s_offscreen_wndproc));
-+			// Remove from taskbar and force invisible.
-+			LONG_PTR exStyle = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-+			exStyle = (exStyle & ~WS_EX_APPWINDOW) | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
-+			SetWindowLongPtrW(hwnd, GWL_EXSTYLE, exStyle);
-+			SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
-+				SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_HIDEWINDOW | SWP_FRAMECHANGED);
-+		}
-+	}
- #endif
- 	filesystem = device->getFileSystem();
- 	filesystem->grab();
-@@ -2041,9 +2088,19 @@ bool Game::MainLoop() {
- 		gSoundManager->Tick();
- 		fps++;
- 		auto now = timer->getRealTime();
--		delta_time = now - prev_time;
--		prev_time = now;
--		cur_time += delta_time;
+@@ -2006,6 +2006,22 @@ bool Game::MainLoop() {
+ 	irr::core::matrix4 mProjection;
+ 	camera = smgr->addCameraSceneNode(0);
+ 	auto UpdateAspectRatio = [this]() {
 +#ifdef WITH_REPLAY2VIDEO
 +		if(replay2video::g_batch.active) {
-+			delta_time = replay2video::g_batch.frame_time_ms;
-+			prev_time += delta_time;
-+			cur_time = prev_time;
-+			replay2video::g_batch.AdvanceVirtualTime();
-+		} else
-+#endif
-+		{
-+			delta_time = now - prev_time;
-+			prev_time = now;
-+			cur_time += delta_time;
-+		}
- 		gJWrapper->ProcessEvents();
- 		bool resized = false;
- 		auto size = driver->getScreenSize();
-@@ -2086,8 +2143,27 @@ bool Game::MainLoop() {
- 		}
- 		atkframe += 0.1f * (float)delta_time * 60.0f / 1000.0f;
- 		atkdy = (float)sin(atkframe);
-+#ifdef WITH_REPLAY2VIDEO
-+		if(replay2video::g_batch.active)
-+			replay2video::g_integration.BeginFrame();
-+#endif
- 		driver->beginScene(true, true, irr::video::SColor(0, 0, 0, 0));
- 		gMutex.lock();
-+#ifdef WITH_REPLAY2VIDEO
-+		if(replay2video::g_batch.active && !replay2video::g_batch.replay_finished && dInfo.isInDuel) {
-+			// Only call StepBatch when no animation is pending (signalFrame==0).
-+			// WaitFrameSignal sets signalFrame; MainLoop decrements it via delta_time.
-+			if(signalFrame == 0) {
-+				gMutex.unlock();
-+				actionSignal.SetNoWait(true);
-+				closeDoneSignal.SetNoWait(true);
-+				ReplayMode::StepBatch();
-+				actionSignal.SetNoWait(false);
-+				closeDoneSignal.SetNoWait(false);
-+				gMutex.lock();
++			const auto& cfg = replay2video::g_batch.config;
++			if(cfg.cam_left != 0.0f || cfg.cam_right != 0.0f) {
++				irr::core::matrix4 mProj;
++				mProj.buildProjectionMatrixPerspectiveLH(
++					cfg.cam_right - cfg.cam_left,
++					cfg.cam_top - cfg.cam_bottom,
++					1.0f, 100.0f);
++				mProj[8] = (cfg.cam_left + cfg.cam_right) / (cfg.cam_left - cfg.cam_right);
++				mProj[9] = (cfg.cam_top + cfg.cam_bottom) / (cfg.cam_bottom - cfg.cam_top);
++				camera->setProjectionMatrix(mProj);
++				return;
 +			}
 +		}
 +#endif
- 		if(dInfo.isInDuel) {
- 			if(dInfo.isReplay)
- 				discord.UpdatePresence(DiscordWrapper::REPLAY);
-@@ -2166,6 +2242,12 @@ bool Game::MainLoop() {
- 		wBtnSettings->setVisible(!(is_building || is_siding || dInfo.isInDuel || open_file));
- 		DrawGUI();
- 		DrawSpec();
+ 		if(!gGameConfig->keep_aspect_ratio) {
+ 			camera->setProjectionMatrix(defaultProjection);
+ 			return;
+@@ -2014,8 +2030,18 @@ bool Game::MainLoop() {
+ 		camera->setProjectionMatrix(BuildProjectionMatrix(CAMERA_BOTTOM, CAMERA_TOP, ratio));
+ 	};
+ 	auto UpdateCameraPosition = [this] {
+-		camera->setPosition(getPosition());
+-		camera->setUpVector(getUpVector());
 +#ifdef WITH_REPLAY2VIDEO
 +		if(replay2video::g_batch.active) {
-+			replay2video::g_integration.ProcessFrame(driver);
-+			replay2video::g_integration.EndFrame();
-+		}
++			const auto& cfg = replay2video::g_batch.config;
++			camera->setPosition(irr::core::vector3df(cfg.cam_offset_x, FIELD_Y, FIELD_Z));
++			camera->setUpVector(getUpVector());
++			camera->setTarget(irr::core::vector3df(cfg.cam_offset_x, cfg.cam_offset_y, 0.f));
++		} else
 +#endif
- 		if(cardimagetextureloading) {
- 			ShowCardInfo(showingcard);
- 		}
-@@ -2187,6 +2269,11 @@ bool Game::MainLoop() {
- 		}
- 		driver->endScene();
- 		gMutex.unlock();
-+#ifdef WITH_REPLAY2VIDEO
-+		if(replay2video::g_batch.active && replay2video::g_integration.IsFinished()) {
-+			break;
++		{
++			camera->setPosition(getPosition());
++			camera->setUpVector(getUpVector());
 +		}
-+#endif
- 		if(closeDuelWindow)
- 			CloseDuelWindow();
- 		if (DuelClient::try_needed) {
-@@ -2321,6 +2408,11 @@ bool Game::MainLoop() {
- 	SingleMode::StopPlay(true);
- 	ReplayMode::StopReplay(true);
- 	ClearTextures();
+ 		if(dInfo.isInDuel)
+ 			dField.RefreshAllCards();
+ 	};
+@@ -2024,6 +2050,13 @@ bool Game::MainLoop() {
+ 	current_topdown = gGameConfig->topdown_view;
+ 	current_keep_aspect_ratio = gGameConfig->keep_aspect_ratio;
+ 
 +#ifdef WITH_REPLAY2VIDEO
 +	if(replay2video::g_batch.active) {
-+		replay2video::g_batch.Stop();
-+	}
++		const auto& cfg = replay2video::g_batch.config;
++		camera->setPosition(irr::core::vector3df(cfg.cam_offset_x, FIELD_Y, FIELD_Z));
++		camera->setTarget(irr::core::vector3df(cfg.cam_offset_x, cfg.cam_offset_y, 0.f));
++	} else
 +#endif
- 	SaveConfig();
- #ifdef YGOPRO_BUILD_DLL
- 	UnloadCore(ocgcore);
+ 	camera->setTarget(irr::core::vector3df(FIELD_X, 0, 0));
+ 	UpdateCameraPosition();
+ 

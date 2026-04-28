@@ -1,27 +1,143 @@
 diff --git a/gframe/drawing.cpp b/gframe/drawing.cpp
-index 918406c7..1e78f8ae 100644
+index 1e78f8ae..fd5df8fe 100644
 --- a/gframe/drawing.cpp
 +++ b/gframe/drawing.cpp
-@@ -1,6 +1,9 @@
- #include "game_config.h"
- #include <irrlicht.h>
- #include "game.h"
+@@ -531,30 +531,96 @@ void Game::DrawMisc() {
+ 	//lp bar
+ 	const auto& self = dInfo.isTeam1 ? dInfo.selfnames : dInfo.opponames;
+ 	const auto& oppo = dInfo.isTeam1 ? dInfo.opponames : dInfo.selfnames;
++
 +#ifdef WITH_REPLAY2VIDEO
-+#include "replay2video/replay2video_integration.h"
-+#endif
- #include "materials.h"
- #include "client_card.h"
- #include "deck_manager.h"
-@@ -1176,6 +1179,12 @@ void Game::PopupElement(irr::gui::IGUIElement * element, int hideframe) {
- 	else ShowElement(element, hideframe);
- }
- void Game::WaitFrameSignal(int frame, std::unique_lock<epro::mutex>& _lck) {
-+#ifdef WITH_REPLAY2VIDEO
-+	if(replay2video::g_batch.active) {
-+		signalFrame = static_cast<uint32_t>(frame * 1000 / 60 / replay2video::g_batch.config.speed);
-+		return; // MainLoop decrements signalFrame; StepBatch won't run until it hits 0
++	// In batch/video mode, reposition LP bars to match the centered 3D field.
++	// The field occupies tight_half_w/half_w of screen width (symmetric about center).
++	// LP bars are placed within that screen footprint, scaled proportionally.
++	const bool r2v_active = replay2video::g_batch.active;
++	irr::s32 r2v_bar_y0 = 0, r2v_bar_y1 = 0;
++	irr::s32 r2v_p1_x0 = 0, r2v_p1_x1 = 0;
++	irr::s32 r2v_p2_x0 = 0, r2v_p2_x1 = 0;
++	irr::s32 r2v_turn_x0 = 0, r2v_turn_x1 = 0;
++	if(r2v_active) {
++		const auto& cfg = replay2video::g_batch.config;
++		const float tight_half_w = 0.4472f;
++		const float half_w = (cfg.cam_right > 0.0f) ? cfg.cam_right : tight_half_w;
++		const irr::s32 sw = (irr::s32)window_size.Width;
++		const irr::s32 sh = (irr::s32)window_size.Height;
++		// Field content spans this many pixels horizontally, centered on screen
++		const irr::s32 field_w = (irr::s32)(sw * tight_half_w / half_w);
++		const irr::s32 field_x0 = (sw - field_w) / 2;
++		const irr::s32 field_x1 = field_x0 + field_w;
++		// Bar height: ~2% of screen height, positioned at top with 0.7% margin
++		const irr::s32 bar_h = std::max(16, (irr::s32)(sh * 0.020f));
++		r2v_bar_y0 = (irr::s32)(sh * 0.007f);
++		r2v_bar_y1 = r2v_bar_y0 + bar_h;
++		// Turn counter occupies center 8% of field width
++		const irr::s32 turn_half_w = (irr::s32)(field_w * 0.04f);
++		const irr::s32 cx = sw / 2;
++		r2v_turn_x0 = cx - turn_half_w;
++		r2v_turn_x1 = cx + turn_half_w;
++		// LP bars fill from field edge to turn counter gap, with 2px inset
++		r2v_p1_x0 = field_x0 + 2;
++		r2v_p1_x1 = r2v_turn_x0 - 2;
++		r2v_p2_x0 = r2v_turn_x1 + 2;
++		r2v_p2_x1 = field_x1 - 2;
 +	}
++	// Helper: make a screen-pixel recti (batch mode) or logical Resize() (normal mode)
++	auto MakeRect = [&](irr::s32 lx0, irr::s32 ly0, irr::s32 lx1, irr::s32 ly1,
++	                    irr::s32 px0, irr::s32 py0, irr::s32 px1, irr::s32 py1) -> irr::core::recti {
++		return r2v_active ? irr::core::recti(px0, py0, px1, py1)
++		                  : Resize(lx0, ly0, lx1, ly1);
++	};
++#define R2V_RECT(lx0,ly0,lx1,ly1, px0,py0,px1,py1) MakeRect(lx0,ly0,lx1,ly1, px0,py0,px1,py1)
++#else
++#define R2V_RECT(lx0,ly0,lx1,ly1, px0,py0,px1,py1) Resize(lx0,ly0,lx1,ly1)
 +#endif
- 	signalFrame = (gGameConfig->quick_animation && frame >= 12) ? 12 * 1000 / 60 : frame * 1000 / 60;
- 	frameSignal.Wait(_lck);
- }
++
+ 	const auto lpframe_pos = ((dInfo.turn % 2 && dInfo.isFirst) || (!(dInfo.turn % 2) && !dInfo.isFirst)) ?
+-						Resize(327, 8, 630, 51 + static_cast<irr::s32>(23 * (self.size() - 1))) :
+-						Resize(689, 8, 991, 51 + static_cast<irr::s32>(23 * (oppo.size() - 1)));
++						R2V_RECT(327, 8, 630, 51 + static_cast<irr::s32>(23 * (self.size() - 1)),
++						         r2v_p1_x0 - 3, r2v_bar_y0 - 2, r2v_p1_x1 + 3, r2v_bar_y1 + 23) :
++						R2V_RECT(689, 8, 991, 51 + static_cast<irr::s32>(23 * (oppo.size() - 1)),
++						         r2v_p2_x0 - 3, r2v_bar_y0 - 2, r2v_p2_x1 + 3, r2v_bar_y1 + 23);
+ 	driver->draw2DRectangle(skin::DUELFIELD_TURNPLAYER_COLOR_VAL, lpframe_pos);
+ 	driver->draw2DRectangleOutline(lpframe_pos, skin::DUELFIELD_TURNPLAYER_OUTLINE_COLOR_VAL);
+-	driver->draw2DImage(imageManager.tLPFrame, Resize(330, 10, 629, 30), irr::core::recti(0, 0, 200, 20), 0, 0, true);
+-	driver->draw2DImage(imageManager.tLPFrame, Resize(691, 10, 990, 30), irr::core::recti(0, 0, 200, 20), 0, 0, true);
++	driver->draw2DImage(imageManager.tLPFrame,
++		R2V_RECT(330, 10, 629, 30, r2v_p1_x0, r2v_bar_y0, r2v_p1_x1, r2v_bar_y1),
++		irr::core::recti(0, 0, 200, 20), 0, 0, true);
++	driver->draw2DImage(imageManager.tLPFrame,
++		R2V_RECT(691, 10, 990, 30, r2v_p2_x0, r2v_bar_y0, r2v_p2_x1, r2v_bar_y1),
++		irr::core::recti(0, 0, 200, 20), 0, 0, true);
+ 
+ #define SKCOLOR(what) skin::LPBAR_##what##_VAL
+ #define RECTCOLOR(what) SKCOLOR(what##_TOP_LEFT), SKCOLOR(what##_TOP_RIGHT), SKCOLOR(what##_BOTTOM_LEFT), SKCOLOR(what##_BOTTOM_RIGHT)
+ #define	DRAWRECT(rect_pos,what,clip) do { driver->draw2DRectangleClip(rect_pos, RECTCOLOR(what),nullptr,clip); } while(0)
+ 	if(dInfo.lp[0]) {
+-		const auto lpbar_pos = Resize(335, 12, 625, 28);
++		const auto lpbar_pos = R2V_RECT(335, 12, 625, 28, r2v_p1_x0+2, r2v_bar_y0+2, r2v_p1_x1-2, r2v_bar_y1-2);
+ 		if(dInfo.lp[0] < dInfo.startlp) {
+-			auto cliprect = Resize(335, 12, 335 + 290 * (dInfo.lp[0] / static_cast<double>(dInfo.startlp)), 28);
++			const double frac = dInfo.lp[0] / static_cast<double>(dInfo.startlp);
++#ifdef WITH_REPLAY2VIDEO
++			auto cliprect = r2v_active
++				? irr::core::recti(r2v_p1_x0+2, r2v_bar_y0+2, r2v_p1_x0+2 + (irr::s32)((r2v_p1_x1-r2v_p1_x0-4)*frac), r2v_bar_y1-2)
++				: Resize(335, 12, 335 + 290 * frac, 28);
++#else
++			auto cliprect = Resize(335, 12, 335 + 290 * frac, 28);
++#endif
+ 			DRAWRECT(lpbar_pos, 1, &cliprect);
+ 		} else {
+ 			DRAWRECT(lpbar_pos, 1, nullptr);
+ 		}
+ 	}
+ 	if(dInfo.lp[1] > 0) {
+-		const auto lpbar_pos = Resize(696, 12, 986, 28);
++		const auto lpbar_pos = R2V_RECT(696, 12, 986, 28, r2v_p2_x0+2, r2v_bar_y0+2, r2v_p2_x1-2, r2v_bar_y1-2);
+ 		if(dInfo.lp[1] < dInfo.startlp) {
+-			auto cliprect = Resize(986 - 290 * (dInfo.lp[1] / static_cast<double>(dInfo.startlp)), 12, 986, 28);
++			const double frac = dInfo.lp[1] / static_cast<double>(dInfo.startlp);
++#ifdef WITH_REPLAY2VIDEO
++			auto cliprect = r2v_active
++				? irr::core::recti(r2v_p2_x1-2 - (irr::s32)((r2v_p2_x1-r2v_p2_x0-4)*frac), r2v_bar_y0+2, r2v_p2_x1-2, r2v_bar_y1-2)
++				: Resize(986 - 290 * frac, 12, 986, 28);
++#else
++			auto cliprect = Resize(986 - 290 * frac, 12, 986, 28);
++#endif
+ 			DRAWRECT(lpbar_pos, 2, &cliprect);
+ 		} else {
+ 			DRAWRECT(lpbar_pos, 2, nullptr);
+@@ -588,11 +654,15 @@ void Game::DrawMisc() {
+ 		driver->draw2DRectangleOutline(rectpos, skin::TIMEBAR_2_OUTLINE_VAL);
+ 	}
+ 
+-	DrawShadowText(numFont, dInfo.strLP[0], Resize(330, 11, 629, 29), Resize(0, 1, 2, 0), skin::DUELFIELD_LP_1_VAL, 0xff000000, true, true);
+-	DrawShadowText(numFont, dInfo.strLP[1], Resize(691, 11, 990, 29), Resize(0, 1, 2, 0), skin::DUELFIELD_LP_2_VAL, 0xff000000, true, true);
++	DrawShadowText(numFont, dInfo.strLP[0],
++		R2V_RECT(330, 11, 629, 29, r2v_p1_x0, r2v_bar_y0, r2v_p1_x1, r2v_bar_y1),
++		Resize(0, 1, 2, 0), skin::DUELFIELD_LP_1_VAL, 0xff000000, true, true);
++	DrawShadowText(numFont, dInfo.strLP[1],
++		R2V_RECT(691, 11, 990, 29, r2v_p2_x0, r2v_bar_y0, r2v_p2_x1, r2v_bar_y1),
++		Resize(0, 1, 2, 0), skin::DUELFIELD_LP_2_VAL, 0xff000000, true, true);
+ 
+-	irr::core::recti p1size = Resize(335, 31, 629, 50);
+-	irr::core::recti p2size = Resize(986, 31, 986, 50);
++	irr::core::recti p1size = R2V_RECT(335, 31, 629, 50, r2v_p1_x0+2, r2v_bar_y1+2, r2v_p1_x1, r2v_bar_y1+22);
++	irr::core::recti p2size = R2V_RECT(986, 31, 986, 50, r2v_p2_x1, r2v_bar_y1+2, r2v_p2_x1, r2v_bar_y1+22);
+ 	{
+ 		int i = 0;
+ 		for (const auto& player : self) {
+@@ -617,9 +687,12 @@ void Game::DrawMisc() {
+ 	}
+ 	/*driver->draw2DRectangle(Resize(632, 10, 688, 30), 0x00000000, 0x00000000, 0xffffffff, 0xffffffff);
+ 	driver->draw2DRectangle(Resize(632, 30, 688, 50), 0xffffffff, 0xffffffff, 0x00000000, 0x00000000);*/
+-	DrawShadowText(lpcFont, gDataManager->GetNumString(dInfo.turn), Resize(635, 5, 685, 40), Resize(0, 0, 2, 0), skin::DUELFIELD_TURN_COUNT_VAL, 0x80000000, true);
++	DrawShadowText(lpcFont, gDataManager->GetNumString(dInfo.turn),
++		R2V_RECT(635, 5, 685, 40, r2v_turn_x0, r2v_bar_y0, r2v_turn_x1, r2v_bar_y1),
++		Resize(0, 0, 2, 0), skin::DUELFIELD_TURN_COUNT_VAL, 0x80000000, true);
+ #undef DRAWRECT
+ #undef LPCOLOR
++#undef R2V_RECT
+ #undef SKCOLOR
+ 
+ 	ClientCard* pcard;

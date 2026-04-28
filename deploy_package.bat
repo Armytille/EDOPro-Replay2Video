@@ -61,6 +61,11 @@ echo Copying config.ini.example...
 copy /Y "%CFG_SRC%" "%DIST%\config.ini.example" >nul
 if !ERRORLEVEL! neq 0 ( echo ERROR: copy of config.ini.example failed & exit /b 1 )
 
+REM --- Copy presets ---
+echo Copying presets\...
+xcopy /E /I /Y "%ROOT%\presets" "%DIST%\presets" >nul
+if !ERRORLEVEL! neq 0 ( echo ERROR: copy of presets\ failed & exit /b 1 )
+
 REM --- Summary ---
 echo.
 echo ============================================

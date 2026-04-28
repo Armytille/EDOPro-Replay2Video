@@ -1,5 +1,5 @@
-# GPU HEVC NVENC - High quality (best NVENC HEVC quality)
-# Requires NVIDIA GPU (GTX 10xx+). Better than H.264, requires modern player.
+# GPU HEVC NVENC - High quality (best NVENC HEVC quality, GPU post-processing)
+# Requires NVIDIA GPU (GTX 10xx+) with Vulkan support. Requires modern player.
 # Rename to config.ini and place next to ygopro.exe.
 
 workdir=D:\ProjectIgnis
@@ -9,5 +9,7 @@ codec=hevc_nvenc
 preset=p7
 crf=18
 scale_filter=lanczos
+vf=libplacebo=upscaler=ewa_lanczos:downscaler=ewa_lanczos:antiringing=1:deband=1
+hwaccel=vulkan
 margin=0.10
 speed=1.0

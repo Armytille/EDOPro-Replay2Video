@@ -1,5 +1,6 @@
 # CPU H.264 - High quality (near-lossless, slow render)
 # Compatible with every player and platform.
+# Note: libplacebo on CPU is slow — expect long render times.
 # Rename to config.ini and place next to ygopro.exe.
 
 workdir=D:\ProjectIgnis
@@ -10,5 +11,6 @@ preset=slow
 crf=18
 tune=film
 scale_filter=lanczos
+vf=libplacebo=upscaler=ewa_lanczos:downscaler=ewa_lanczos:antiringing=1:deband=1
 margin=0.10
 speed=1.0

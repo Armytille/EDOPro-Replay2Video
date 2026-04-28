@@ -1,5 +1,5 @@
 diff --git a/gframe/game.cpp b/gframe/game.cpp
-index 361b1c87..1629fae6 100644
+index 361b1c87..bd998733 100644
 --- a/gframe/game.cpp
 +++ b/gframe/game.cpp
 @@ -2006,6 +2006,22 @@ bool Game::MainLoop() {
@@ -75,7 +75,7 @@ index 361b1c87..1629fae6 100644
  	if(gGameConfig->alternative_phase_layout) {
  		wPhase->setRelativePosition(Resize(940, 80, 990, 340));
  		return;
-@@ -3355,6 +3396,23 @@ void Game::ResizePhaseButtons() {
+@@ -3355,6 +3396,25 @@ void Game::ResizePhaseButtons() {
  		y1 = static_cast<irr::s32>(std::round(310 * window_scale.Y));
  		y2 = static_cast<irr::s32>(std::round(330 * window_scale.Y));
  	}
@@ -87,13 +87,15 @@ index 361b1c87..1629fae6 100644
 +		y1 -= y_correction;
 +		y2 -= y_correction;
 +
-+		// Keep wPhase the same logical width as normal mode (375px = 855-480 logical units scaled).
-+		// EGUIA_SCALE children (DP/M1/EP at 0/160/320 within 375) will then sit at the right thirds.
-+		// Center it on screen (r2v field is symmetric unlike the asymmetric normal camera frustum).
-+		const irr::s32 phase_w = static_cast<irr::s32>(std::round(DEFAULT_WIDTH * window_scale.X));
++		// Scale up width and height by 15% for r2v readability.
++		const irr::s32 phase_w = static_cast<irr::s32>(std::round(DEFAULT_WIDTH * window_scale.X * 1.15f));
 +		const irr::s32 cx = (irr::s32)window_size.Width / 2;
 +		x1 = cx - phase_w / 2;
 +		x2 = cx + phase_w / 2;
++		const irr::s32 center_y = (y1 + y2) / 2;
++		const irr::s32 half_h = static_cast<irr::s32>(std::round((y2 - y1) * 0.5f * 1.15f));
++		y1 = center_y - half_h;
++		y2 = center_y + half_h;
 +	}
 +#endif
  	wPhase->setRelativePosition(Scale(x1, y1, x2, y2));

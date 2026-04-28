@@ -237,5 +237,8 @@ if exist "%EDOPro_DIR%\build\ygopro.sln" (
     exit /b 1
 )
 
+echo.
+echo To assemble a distributable package, run: deploy_package.bat
+
 cd "%ROOT%"
 exit /b 0

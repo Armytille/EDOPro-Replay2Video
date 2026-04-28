@@ -1,79 +1,60 @@
-# EDOPro Replay2Video Configuration File
-# Place this file in the same directory as the executable and rename to config.ini.
-# All values are optional; missing keys use the built-in defaults shown below.
-
-# Output resolution. Common presets:
-#   1280x720   = 720p
-#   1920x1080  = 1080p (default)
-#   2560x1440  = 1440p
-#   3840x2160  = 4K
-# You can also specify any custom WxH.
-resolution=1920x1080
-
-# Target frame rate. EDOPro animations are designed for 60 fps.
-# Lower values (30) render faster but may look less smooth.
-# Higher values (120, 240) are supported but increase file size.
-fps=60
-
-# Constant Rate Factor for x264/x265. Range: 0 (lossless) to 51 (worst).
-# 23 is the x264 default and offers a good quality/size balance.
-# 18 is visually nearly lossless. 28 is acceptable for web sharing.
-crf=23
-
-# Encoding preset: trade-off between speed and compression efficiency.
-#   ultrafast  - fastest, largest file
-#   veryfast   - fast, good for batch rendering (default)
-#   medium     - balanced
-#   slow       - smaller file, much slower
-#   veryslow   - best compression, impractical for long replays
-preset=veryfast
-
-# Video codec.
-#   libx264    = software H.264, compatible everywhere (default)
-#   h264_nvenc = NVIDIA GPU hardware encoding, much faster
-#   libx265    = software HEVC/H.265, smaller files, slower, less compatible
-codec=libx264
-
-# Scaling algorithm for resolution conversion.
-#   bilinear     - fast, basic interpolation (default)
-#   lanczos      - sharper, better for upscaling, slower
-scale_filter=bilinear
-
-# x264/x265 tune parameter (optional). Optimizes encoding for specific content.
-#   film         - best for movies, animations (improves sharpness)
-#   animation    - optimized for cartoons
-#   grain        - preserves film grain
-#   (leave empty for default)
-tune=
-
-# Video filter (optional). Applies FFmpeg filters to the video stream for post-processing.
-# Examples:
-#   libplacebo=upscaler=ewa_lanczos:downscaler=ewa_lanczos:antiringing=1:deband=1
-#   (leave empty for no filter)
-vf=
-
-# Hardware acceleration (optional). Enables GPU acceleration for video filters.
-# Requires --vf and FFmpeg with hwaccel support (e.g., Vulkan).
-# Examples:
-#   vulkan  (uses Vulkan for GPU processing)
-#   (leave empty for CPU)
-hwaccel=
-
-# HW device index (optional). Specifies the GPU device for hwaccel.
-# Default is 0 (first GPU).
-hwaccel_device=0
-
-# Left/right margin as a fraction of the output width (0.0 to 0.45).
-# The game field is scaled down to fit the non-margin area and centered on black.
-# Default: 0.10 (10% margin each side = 20% total horizontal padding).
-# Set to 0 to disable.
-margin=0.10
-
-# Fixed bitrate override (optional). If set, CRF is ignored.
-# Example: 8000 = 8 Mbps. Useful when you need a guaranteed file size.
-# bitrate=8000
+# EDOPro Replay2Video - Configuration File
+# Rename to config.ini and place next to ygopro.exe (or in --workdir).
+# CLI flags override these values when both are specified.
 
 # Working directory: path to your EDOPro installation.
-# This folder must contain: pics/, textures/, skin/, fonts/, cards.cdb
-# If omitted, the executable's directory is used.
-# workdir=C:\Games\EDOPro
+# Must contain: config/strings.conf, pics/, textures/, skin/, fonts/
+workdir=D:\ProjectIgnis
+
+# Output resolution.
+resolution=1920x1080
+
+# Target frame rate.
+fps=60
+
+# Video codec.
+#   libx264    = software H.264, compatible everywhere
+#   h264_nvenc = NVIDIA GPU H.264, fast
+#   av1_nvenc  = NVIDIA GPU AV1, best quality/size ratio (RTX 30xx+)
+#   libx265    = software HEVC, smaller files, very slow
+codec=av1_nvenc
+
+# Encoding preset.
+# NVENC presets: p1 (fastest) to p7 (best quality)
+# x264/x265 presets: ultrafast veryfast medium slow veryslow
+preset=p7
+
+# Constant Rate Factor. 0 = lossless, higher = more compression.
+# av1_nvenc: 0 (lossless) recommended for archival quality
+# libx264:   18 (near-lossless) to 23 (default)
+crf=0
+
+# Encoder tune (optional).
+# NVENC: hq, ll (low latency), ull, lossless
+# x264/x265: film, animation, grain
+tune=hq
+
+# Scaling algorithm for resolution conversion.
+#   bilinear  - fast
+#   lanczos   - sharper, better quality
+scale_filter=lanczos
+
+# POV player. 0 = player 1 (bottom), 1 = player 2 (top).
+player=0
+
+# Background margin as a fraction of width (0.0 to 0.45).
+# 0.10 = 10% black margin each side.
+margin=0.10
+
+# Playback speed multiplier. 1.0 = normal, 1.5 = 50% faster.
+speed=1.0
+
+# Fixed bitrate override in kbps (optional). Overrides crf if set.
+# bitrate=8000
+
+# FFmpeg video filter string (optional).
+# vf=libplacebo=upscaler=ewa_lanczos:antiringing=1
+
+# Hardware acceleration for video filters (optional).
+# hwaccel=vulkan
+# hwaccel_device=0

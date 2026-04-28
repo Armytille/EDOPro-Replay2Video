@@ -11,6 +11,6 @@ preset=veryslow
 crf=16
 tune=grain
 scale_filter=lanczos
-vf=libplacebo=upscaler=ewa_lanczos:downscaler=ewa_lanczos:antiringing=1:deband=1:dither=error_diffusion
+vf=libplacebo=upscaler=ewa_lanczos:downscaler=ewa_lanczos:antiringing=1:deband=1
 margin=0.10
 speed=1.0

@@ -9,14 +9,14 @@ echo.
 set ROOT=%~dp0
 if "%ROOT:~-1%"=="\" set ROOT=%ROOT:~0,-1%
 
-set EXE_SRC=%ROOT%\edopro\bin\x64\release\ygopro.exe
+set EXE_SRC=%ROOT%\edopro\bin\x64\release\replay2video.exe
 set DLL_SRC=%ROOT%\ffmpeg-dev\bin
 set CFG_SRC=%ROOT%\config.ini.example
 set DIST=%ROOT%\dist
 
 REM --- Guard: exe must exist ---
 if not exist "%EXE_SRC%" (
-    echo ERROR: ygopro.exe not found at:
+    echo ERROR: replay2video.exe not found at:
     echo   %EXE_SRC%
     echo Run build_windows.bat first.
     exit /b 1
@@ -44,9 +44,9 @@ if !ERRORLEVEL! neq 0 (
 )
 
 REM --- Copy exe ---
-echo Copying ygopro.exe...
-copy /Y "%EXE_SRC%" "%DIST%\ygopro.exe" >nul
-if !ERRORLEVEL! neq 0 ( echo ERROR: copy of ygopro.exe failed & exit /b 1 )
+echo Copying replay2video.exe...
+copy /Y "%EXE_SRC%" "%DIST%\replay2video.exe" >nul
+if !ERRORLEVEL! neq 0 ( echo ERROR: copy of replay2video.exe failed & exit /b 1 )
 
 REM --- Copy DLLs ---
 echo Copying FFmpeg DLLs...
@@ -69,6 +69,6 @@ echo.
 dir /b "%DIST%"
 echo.
 echo INSTALL: place dist\ contents alongside your EDOPro assets.
-echo USE:     ygopro.exe --render-replay duel.yrpX --output duel.mp4 --workdir D:\path\to\EDOPro
+echo USE:     replay2video.exe --render-replay duel.yrpX --output duel.mp4 --workdir D:\path\to\EDOPro
 echo ============================================
 exit /b 0

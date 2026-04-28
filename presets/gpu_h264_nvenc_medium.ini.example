@@ -1,0 +1,13 @@
+# GPU H.264 NVENC - Medium quality (fast render, good quality)
+# Requires NVIDIA GPU. Compatible with every player.
+# Rename to config.ini and place next to ygopro.exe.
+
+workdir=D:\ProjectIgnis
+resolution=1920x1080
+fps=60
+codec=h264_nvenc
+preset=p4
+crf=23
+scale_filter=lanczos
+margin=0.10
+speed=1.0

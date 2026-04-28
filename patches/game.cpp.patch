@@ -1,5 +1,5 @@
 diff --git a/gframe/game.cpp b/gframe/game.cpp
-index 361b1c87..431c32e1 100644
+index 361b1c87..1629fae6 100644
 --- a/gframe/game.cpp
 +++ b/gframe/game.cpp
 @@ -2006,6 +2006,22 @@ bool Game::MainLoop() {
@@ -60,3 +60,42 @@ index 361b1c87..431c32e1 100644
  	camera->setTarget(irr::core::vector3df(FIELD_X, 0, 0));
  	UpdateCameraPosition();
  
+@@ -3324,6 +3357,14 @@ int Game::GetMasterRule(uint64_t param, uint32_t forbidden, int* truerule) {
+ 		return 2;
+ }
+ void Game::ResizePhaseButtons() {
++#ifdef WITH_REPLAY2VIDEO
++	if(replay2video::g_batch.active) {
++		// Fall through to the keep_aspect_ratio magic formula below, then apply a Y correction.
++		// The magic formula assumes the normal camera (target Y=0). In r2v the camera targets
++		// cam_offset_y=0.7, which shifts the visual separator upward on screen.
++		// Correction: ~56 logical units per unit of cam_offset_y (empirically derived).
++	} else
++#endif
+ 	if(gGameConfig->alternative_phase_layout) {
+ 		wPhase->setRelativePosition(Resize(940, 80, 990, 340));
+ 		return;
+@@ -3355,6 +3396,23 @@ void Game::ResizePhaseButtons() {
+ 		y1 = static_cast<irr::s32>(std::round(310 * window_scale.Y));
+ 		y2 = static_cast<irr::s32>(std::round(330 * window_scale.Y));
+ 	}
++#ifdef WITH_REPLAY2VIDEO
++	if(replay2video::g_batch.active) {
++		// Shift Y up: cam_offset_y tilts the camera so the visual separator is above screen center.
++		const irr::s32 y_correction = static_cast<irr::s32>(std::round(
++			replay2video::g_batch.config.cam_offset_y * 56.0f * window_scale.Y));
++		y1 -= y_correction;
++		y2 -= y_correction;
++
++		// Keep wPhase the same logical width as normal mode (375px = 855-480 logical units scaled).
++		// EGUIA_SCALE children (DP/M1/EP at 0/160/320 within 375) will then sit at the right thirds.
++		// Center it on screen (r2v field is symmetric unlike the asymmetric normal camera frustum).
++		const irr::s32 phase_w = static_cast<irr::s32>(std::round(DEFAULT_WIDTH * window_scale.X));
++		const irr::s32 cx = (irr::s32)window_size.Width / 2;
++		x1 = cx - phase_w / 2;
++		x2 = cx + phase_w / 2;
++	}
++#endif
+ 	wPhase->setRelativePosition(Scale(x1, y1, x2, y2));
+ }
+ void Game::SetPhaseButtons(bool visibility) {

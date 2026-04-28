@@ -244,9 +244,10 @@ void RenderConfig::Normalize() {
         //   tight half_w = 0.4491  (extra deck left is the widest content)
         // margin expands the frustum outward to reveal background around the field.
         const float tight_half_h = 0.2850f; // includes card half-height at hand positions
-        const float tight_half_w = 0.4472f; // balanced: cam_x=4.0 centers left/right content
+        // Derive half_w from half_h * pixel aspect ratio so cards render square at any resolution.
+        const float pixel_ratio = (height > 0) ? (float)width / (float)height : (16.0f / 9.0f);
         const float half_h = tight_half_h * (1.0f + 2.0f * margin);
-        const float half_w = tight_half_w * (1.0f + 2.0f * margin);
+        const float half_w = half_h * pixel_ratio;
         cam_left   = -half_w;
         cam_right  =  half_w;
         cam_bottom = -half_h;

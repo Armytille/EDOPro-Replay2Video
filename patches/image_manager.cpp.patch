@@ -1,19 +1,273 @@
 diff --git a/gframe/image_manager.cpp b/gframe/image_manager.cpp
-index aed71e8c..610e4c8d 100644
+index 610e4c8d..ab1bb8f0 100644
 --- a/gframe/image_manager.cpp
 +++ b/gframe/image_manager.cpp
-@@ -66,9 +66,11 @@ ImageManager::~ImageManager() {
- 		if(it.second)
- 			it.second->drop();
+@@ -11,6 +11,10 @@
+ #include "game.h"
+ #include "config.h"
+ #include "fmt.h"
++extern "C" {
++#include <libswscale/swscale.h>
++#include <libavutil/pixfmt.h>
++}
+ 
+ #define BASE_PATH EPRO_TEXT("./textures/")
+ 
+@@ -367,6 +371,12 @@ void ImageManager::ClearTexture(bool resize) {
  	}
--	for(auto& it : g_txrCache) {
--		if(it.second)
--			driver->removeTexture(it.second);
-+	if(driver) {
-+		for(auto& it : g_txrCache) {
-+			if(it.second)
-+				driver->removeTexture(it.second);
-+		}
- 	}
+ 	tFields.clear();
  }
- irr::video::ITexture* ImageManager::loadTextureFixedSize(epro::path_stringview texture_name, int width, int height) {
++void ImageManager::SetArtTextureSize(int width, int height) {
++	// sizes[0] = cartes sur le plateau (petites), sizes[1] = carte agrandie dans le panneau.
++	// On ne touche que sizes[1] : les cartes en jeu bénéficient peu d'une haute résolution.
++	sizes[1].first  = toPow2(driver, width);
++	sizes[1].second = toPow2(driver, height);
++}
+ void ImageManager::RefreshCachedTextures() {
+ 	auto LoadTexture = [this](int index, texture_map& dest, auto& size, imgType type) {
+ 		auto& src = loaded_pics[index];
+@@ -478,52 +488,74 @@ void ImageManager::ClearCachedTextures() {
+ 	}
+ 	cv_clear.notify_one();
+ }
++// Map Irrlicht color format to AVPixelFormat and bytes-per-pixel.
++// Returns AV_PIX_FMT_NONE if unsupported.
++static AVPixelFormat irrFmtToAV(irr::video::ECOLOR_FORMAT fmt, int& bpp) {
++	switch(fmt) {
++		case irr::video::ECF_A8R8G8B8: bpp = 4; return AV_PIX_FMT_BGRA;
++		case irr::video::ECF_R8G8B8:   bpp = 3; return AV_PIX_FMT_BGR24;
++		default: return AV_PIX_FMT_NONE;
++	}
++}
++
+ // function by Warr1024, from https://github.com/minetest/minetest/issues/2419 , modified
+ bool ImageManager::imageScaleNNAA(irr::video::IImage* src, irr::video::IImage* dest, chrono_time timestamp_id, const std::atomic<chrono_time>& source_timestamp_id) {
+-	// Cache rectsngle boundaries.
+-	auto& sdim = src->getDimension();
++	if(timestamp_id != source_timestamp_id)
++		return false;
++
++	int srcBpp = 0, dstBpp = 0;
++	AVPixelFormat srcFmt = irrFmtToAV(src->getColorFormat(), srcBpp);
++	AVPixelFormat dstFmt = irrFmtToAV(dest->getColorFormat(), dstBpp);
++
++	if(srcFmt != AV_PIX_FMT_NONE && dstFmt != AV_PIX_FMT_NONE) {
++		const auto& sdim = src->getDimension();
++		const auto& ddim = dest->getDimension();
++		const int sw = (int)sdim.Width;
++		const int sh = (int)sdim.Height;
++		const int dw = (int)ddim.Width;
++		const int dh = (int)ddim.Height;
++
++		SwsContext* sws = sws_getContext(sw, sh, srcFmt,
++		                                 dw, dh, dstFmt,
++		                                 SWS_LANCZOS, nullptr, nullptr, nullptr);
++		if(sws) {
++			const uint8_t* srcSlice[1] = { static_cast<const uint8_t*>(src->getData()) };
++			const int srcStride[1] = { sw * srcBpp };
++			uint8_t* dstSlice[1] = { static_cast<uint8_t*>(dest->getData()) };
++			const int dstStride[1] = { dw * dstBpp };
++			sws_scale(sws, srcSlice, srcStride, 0, sh, dstSlice, dstStride);
++			sws_freeContext(sws);
++			return timestamp_id == source_timestamp_id;
++		}
++	}
++
++	// Fallback: original NNAA for unsupported formats or sws failure.
++	const auto& sdim = src->getDimension();
+ 	const double sw = sdim.Width;
+ 	const double sh = sdim.Height;
+-
+-	// Walk each destination image pixel.
+-	// Note: loop y around x for better cache locality.
+-	const auto& dim = dest->getDimension();
+-	const auto divw = sw / dim.Width;
+-	const auto divh = sh / dim.Height;
++	const auto& ddim = dest->getDimension();
++	const auto divw = sw / ddim.Width;
++	const auto divh = sh / ddim.Height;
+ 	irr::u32 dy = 0;
+-	for(; dy < dim.Height && timestamp_id == source_timestamp_id; dy++) {
+-		for(irr::u32 dx = 0; dx < dim.Width; dx++) {
+-			// Calculate floating-point source rectangle bounds.
++	for(; dy < ddim.Height && timestamp_id == source_timestamp_id; dy++) {
++		for(irr::u32 dx = 0; dx < ddim.Width; dx++) {
+ 			const double minsx = dx * divw;
+ 			const double maxsx = minsx + divw;
+ 			const double minsy = dy * divh;
+ 			const double maxsy = minsy + divh;
+-
+-			// Total area, and integral of r, g, b values over that area,
+-			// initialized to zero, to be summed up in next loops.
+ 			double area = 0, ra = 0, ga = 0, ba = 0, aa = 0;
+ 			irr::video::SColor pxl;
+ 			const auto csy = std::floor(minsy);
+ 			const auto csx = std::floor(minsx);
+-			// Loop over the integral pixel positions described by those bounds.
+ 			for(double sy = csy; sy < maxsy; sy++)
+ 				for(double sx = csx; sx < maxsx; sx++) {
+-					// Calculate width, height, then area of dest pixel
+-					// that's covered by this source pixel.
+ 					double pw = 1;
+-					if(minsx > sx)
+-						pw += sx - minsx;
+-					if(maxsx < (sx + 1))
+-						pw += maxsx - sx - 1;
++					if(minsx > sx) pw += sx - minsx;
++					if(maxsx < (sx + 1)) pw += maxsx - sx - 1;
+ 					double ph = 1;
+-					if(minsy > sy)
+-						ph += sy - minsy;
+-					if(maxsy < (sy + 1))
+-						ph += maxsy - sy - 1;
++					if(minsy > sy) ph += sy - minsy;
++					if(maxsy < (sy + 1)) ph += maxsy - sy - 1;
+ 					const double pa = pw * ph;
+-
+-					// Get source pixel and add it to totals, weighted
+-					// by covered area and alpha.
+ 					pxl = src->getPixel(sx, sy);
+ 					area += pa;
+ 					ra += pa * pxl.getRed();
+@@ -531,23 +563,18 @@ bool ImageManager::imageScaleNNAA(irr::video::IImage* src, irr::video::IImage* d
+ 					ba += pa * pxl.getBlue();
+ 					aa += pa * pxl.getAlpha();
+ 				}
+-
+-			// Set the destination image pixel to the average color.
+ 			if(area > 0) {
+ 				pxl.setRed(ra / area + 0.5);
+ 				pxl.setGreen(ga / area + 0.5);
+ 				pxl.setBlue(ba / area + 0.5);
+ 				pxl.setAlpha(aa / area + 0.5);
+ 			} else {
+-				pxl.setRed(0);
+-				pxl.setGreen(0);
+-				pxl.setBlue(0);
+-				pxl.setAlpha(0);
++				pxl.set(0, 0, 0, 0);
+ 			}
+ 			dest->setPixel(dx, dy, pxl);
+ 		}
+ 	}
+-	return dy == dim.Height;
++	return dy == ddim.Height;
+ }
+ irr::video::IImage* ImageManager::GetScaledImage(irr::video::IImage* srcimg, int width, int height, chrono_time call_timestamp_id, const std::atomic<chrono_time>& source_timestamp_id) {
+ 	if(width <= 0 || height <= 0)
+@@ -848,62 +875,70 @@ static void imageCleanTransparent(irr::video::IImage* src, irr::u32 threshold) {
+ 		}
+ }
+ 
+-/* Scale a region of an image into another image, using nearest-neighbor with
+- * anti-aliasing; treat pixels as crisp rectangles, but blend them at boundaries
+- * to prevent non-integer scaling ratio artifacts.  Note that this may cause
+- * some blending at the edges where pixels don't line up perfectly, but this
+- * filter is designed to produce the most accurate results for both upscaling
+- * and downscaling.
++/* Scale a region of an image into another image using Lanczos resampling via
++ * libswscale.  srcrect selects the sub-region of src to scale; the full dest
++ * image is the output.  Falls back to a simple blit if libswscale fails.
+  */
+ static void imageScaleNNAAUnthreaded(irr::video::IImage* src, const irr::core::rect<irr::s32>& srcrect, irr::video::IImage* dest) {
+-	// Cache rectangle boundaries.
+-	const double sox = srcrect.UpperLeftCorner.X;
+-	const double soy = srcrect.UpperLeftCorner.Y;
+-	const double sw = srcrect.getWidth();
+-	const double sh = srcrect.getHeight();
+-
+-	// Walk each destination image pixel.
+-	// Note: loop y around x for better cache locality.
+-	const auto& dim = dest->getDimension();
+-	const auto divw = sw / dim.Width;
+-	const auto divh = sh / dim.Height;
+-	for(irr::u32 dy = 0; dy < dim.Height; dy++)
+-		for(irr::u32 dx = 0; dx < dim.Width; dx++) {
+-
+-			// Calculate floating-point source rectangle bounds.
+-			// Do some basic clipping, and for mirrored/flipped rects,
+-			// make sure min/max are in the right order.
+-			auto minsx = std::min(std::max(sox + (dx * divw), 0.0), sw + sox);
+-			auto maxsx = std::min(std::max(minsx + divw, 0.0), sw + sox);
+-			if(minsx > maxsx)
+-				std::swap(minsx, maxsx);
+-			auto minsy = std::min(std::max(soy + (dy * divh), 0.0), sh + soy);
+-			auto maxsy = std::min(std::max(minsy + divh, 0.0), sh + soy);
+-			if(minsy > maxsy)
+-				std::swap(minsy, maxsy);
++	const int sox = srcrect.UpperLeftCorner.X;
++	const int soy = srcrect.UpperLeftCorner.Y;
++	const int sw  = srcrect.getWidth();
++	const int sh  = srcrect.getHeight();
++	const auto& ddim = dest->getDimension();
++	const int dw = (int)ddim.Width;
++	const int dh = (int)ddim.Height;
++
++	const auto& sdim = src->getDimension();
++	int srcBpp = 0, dstBpp = 0;
++	AVPixelFormat srcFmt = irrFmtToAV(src->getColorFormat(), srcBpp);
++	AVPixelFormat dstFmt = irrFmtToAV(dest->getColorFormat(), dstBpp);
++	// Bytes per pixel for stride; default to 4 for fallback path if format is unknown.
++	const int srcBppSafe = (srcBpp > 0) ? srcBpp : 4;
++	const int fullSrcStride = (int)sdim.Width * srcBppSafe;
++	// Offset into the source buffer to the top-left of srcrect.
++	const uint8_t* srcData = static_cast<const uint8_t*>(src->getData())
++	                         + soy * fullSrcStride + sox * srcBppSafe;
++	uint8_t* dstData = static_cast<uint8_t*>(dest->getData());
++
++	SwsContext* sws = (srcFmt != AV_PIX_FMT_NONE && dstFmt != AV_PIX_FMT_NONE)
++	    ? sws_getContext(sw, sh, srcFmt, dw, dh, dstFmt, SWS_LANCZOS, nullptr, nullptr, nullptr)
++	    : nullptr;
++	if(sws) {
++		const uint8_t* srcSlice[1] = { srcData };
++		const int srcStride[1] = { fullSrcStride };
++		uint8_t* dstSlice[1] = { dstData };
++		const int dstStride[1] = { dw * dstBpp };
++		sws_scale(sws, srcSlice, srcStride, 0, sh, dstSlice, dstStride);
++		sws_freeContext(sws);
++		return;
++	}
+ 
++	// Fallback: original NNAA logic kept below for safety.
++	const double sox_d = sox;
++	const double soy_d = soy;
++	const double sw_d  = sw;
++	const double sh_d  = sh;
++	const auto divw = sw_d / dw;
++	const auto divh = sh_d / dh;
++	for(irr::u32 dy = 0; dy < (irr::u32)dh; dy++)
++		for(irr::u32 dx = 0; dx < (irr::u32)dw; dx++) {
++			auto minsx = std::min(std::max(sox_d + (dx * divw), 0.0), sw_d + sox_d);
++			auto maxsx = std::min(std::max(minsx + divw, 0.0), sw_d + sox_d);
++			if(minsx > maxsx) std::swap(minsx, maxsx);
++			auto minsy = std::min(std::max(soy_d + (dy * divh), 0.0), sh_d + soy_d);
++			auto maxsy = std::min(std::max(minsy + divh, 0.0), sh_d + soy_d);
++			if(minsy > maxsy) std::swap(minsy, maxsy);
+ 			const auto csy = std::floor(minsy);
+ 			const auto csx = std::floor(minsx);
+-
+-			// Total area, and integral of r, g, b values over that area,
+-			// initialized to zero, to be summed up in next loops.
+ 			double area = 0, ra = 0, ga = 0, ba = 0, aa = 0;
+ 			irr::video::SColor pxl;
+-
+-			// Loop over the integral pixel positions described by those bounds.
+ 			for(double sy = csy; sy < maxsy; sy++)
+ 				for(double sx = csx; sx < maxsx; sx++) {
+-					// Calculate width, height, then area of dest pixel
+-					// that's covered by this source pixel.
+-
+ 					double pw = 1.0;
+-					if(minsx > sx)
+-						pw += sx - minsx;
+-					if(maxsx < (sx + 1))
+-						pw += maxsx - sx - 1;
++					if(minsx > sx) pw += sx - minsx;
++					if(maxsx < (sx + 1)) pw += maxsx - sx - 1;
+ 					double ph = 1.0;
+-					if(minsy > sy)
+-						ph += sy - minsy;
++					if(minsy > sy) ph += sy - minsy;
+ 					if(maxsy < (sy + 1))
+ 						ph += maxsy - sy - 1;
+ 					const double pa = pw * ph;

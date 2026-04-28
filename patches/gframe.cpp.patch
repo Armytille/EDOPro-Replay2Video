@@ -1,8 +1,8 @@
 diff --git a/gframe/gframe.cpp b/gframe/gframe.cpp
-index ea494aa8..68cdbbb1 100644
+index ea494aa8..7fdbea6e 100644
 --- a/gframe/gframe.cpp
 +++ b/gframe/gframe.cpp
-@@ -283,24 +283,30 @@ int edopro_main(const args_t& args) {
+@@ -283,24 +283,32 @@ int edopro_main(const args_t& args) {
  			CheckArguments(args);
  #ifdef WITH_REPLAY2VIDEO
  			if(ygo::replay2video::g_batch.active) {
@@ -14,6 +14,8 @@ index ea494aa8..68cdbbb1 100644
 +				fprintf(stderr, "[r2v] SetupFBO\n"); fflush(stderr);
  				ygo::replay2video::g_integration.SetupFBO(ygo::mainGame->device->getVideoDriver());
  				auto& cfg = ygo::replay2video::g_batch.config;
++				// Always load card art at 1024px — the default (177px * dpi_scale) is too small for video output.
++				ygo::mainGame->imageManager.SetArtTextureSize(1024, 1024);
 +				fprintf(stderr, "[r2v] OpenReplay: %s\n", cfg.input_replay.c_str()); fflush(stderr);
  				if(!ygo::ReplayMode::cur_replay.OpenReplay(ygo::Utils::ToPathString(cfg.input_replay))) {
  					std::cerr << "[replay2video] Failed to open replay: " << cfg.input_replay << "\n";

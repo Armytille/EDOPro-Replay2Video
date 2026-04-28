@@ -1,8 +1,8 @@
 diff --git a/gframe/drawing.cpp b/gframe/drawing.cpp
-index 1e78f8ae..fd5df8fe 100644
+index 1e78f8ae..d1ee5977 100644
 --- a/gframe/drawing.cpp
 +++ b/gframe/drawing.cpp
-@@ -531,30 +531,96 @@ void Game::DrawMisc() {
+@@ -531,30 +531,102 @@ void Game::DrawMisc() {
  	//lp bar
  	const auto& self = dInfo.isTeam1 ? dInfo.selfnames : dInfo.opponames;
  	const auto& oppo = dInfo.isTeam1 ? dInfo.opponames : dInfo.selfnames;
@@ -18,28 +18,34 @@ index 1e78f8ae..fd5df8fe 100644
 +	irr::s32 r2v_turn_x0 = 0, r2v_turn_x1 = 0;
 +	if(r2v_active) {
 +		const auto& cfg = replay2video::g_batch.config;
-+		const float tight_half_w = 0.4472f;
-+		const float half_w = (cfg.cam_right > 0.0f) ? cfg.cam_right : tight_half_w;
 +		const irr::s32 sw = (irr::s32)window_size.Width;
 +		const irr::s32 sh = (irr::s32)window_size.Height;
-+		// Field content spans this many pixels horizontally, centered on screen
-+		const irr::s32 field_w = (irr::s32)(sw * tight_half_w / half_w);
-+		const irr::s32 field_x0 = (sw - field_w) / 2;
-+		const irr::s32 field_x1 = field_x0 + field_w;
-+		// Bar height: ~2% of screen height, positioned at top with 0.7% margin
-+		const irr::s32 bar_h = std::max(16, (irr::s32)(sh * 0.020f));
-+		r2v_bar_y0 = (irr::s32)(sh * 0.007f);
++		// Bar width: field content occupies tight_half_w/cam_right of screen width.
++		// tight_half_w=0.4472 (fixed field NDC half-width), cam_right = half_h * pixel_ratio.
++		// LP bars span the visible field width. The field's horizontal NDC extent
++		// at zero margin is tight_half_w=0.4472. cam_right includes the margin.
++		// We scale down further by 0.85 to leave some breathing room on the sides.
++		const float tight_half_w = 0.4472f * 0.75f;
++		const float tight_half_h = 0.2850f;
++		const float cam_right = (cfg.cam_right > 0.0f) ? cfg.cam_right
++		                      : tight_half_h * ((float)sw / (float)sh);
++		const irr::s32 bar_w = (irr::s32)(sw * tight_half_w / cam_right);
++		const irr::s32 bar_x0 = (sw - bar_w) / 2;
++		const irr::s32 bar_x1 = bar_x0 + bar_w;
++		// Bar height: slim, fits numFont LP text (~16px scaled)
++		const irr::s32 bar_h = std::max(14, (irr::s32)(sh * 0.020f));
++		r2v_bar_y0 = 2;
 +		r2v_bar_y1 = r2v_bar_y0 + bar_h;
-+		// Turn counter occupies center 8% of field width
-+		const irr::s32 turn_half_w = (irr::s32)(field_w * 0.04f);
++		// Turn counter: small gap at center, same y as bars
++		const irr::s32 turn_half_w = (irr::s32)(bar_w * 0.025f);
 +		const irr::s32 cx = sw / 2;
 +		r2v_turn_x0 = cx - turn_half_w;
 +		r2v_turn_x1 = cx + turn_half_w;
-+		// LP bars fill from field edge to turn counter gap, with 2px inset
-+		r2v_p1_x0 = field_x0 + 2;
++		// LP bars split at turn counter gap
++		r2v_p1_x0 = bar_x0 + 2;
 +		r2v_p1_x1 = r2v_turn_x0 - 2;
 +		r2v_p2_x0 = r2v_turn_x1 + 2;
-+		r2v_p2_x1 = field_x1 - 2;
++		r2v_p2_x1 = bar_x1 - 2;
 +	}
 +	// Helper: make a screen-pixel recti (batch mode) or logical Resize() (normal mode)
 +	auto MakeRect = [&](irr::s32 lx0, irr::s32 ly0, irr::s32 lx1, irr::s32 ly1,
@@ -107,7 +113,7 @@ index 1e78f8ae..fd5df8fe 100644
  			DRAWRECT(lpbar_pos, 2, &cliprect);
  		} else {
  			DRAWRECT(lpbar_pos, 2, nullptr);
-@@ -588,11 +654,15 @@ void Game::DrawMisc() {
+@@ -588,11 +660,15 @@ void Game::DrawMisc() {
  		driver->draw2DRectangleOutline(rectpos, skin::TIMEBAR_2_OUTLINE_VAL);
  	}
  
@@ -127,7 +133,7 @@ index 1e78f8ae..fd5df8fe 100644
  	{
  		int i = 0;
  		for (const auto& player : self) {
-@@ -617,9 +687,12 @@ void Game::DrawMisc() {
+@@ -617,9 +693,12 @@ void Game::DrawMisc() {
  	}
  	/*driver->draw2DRectangle(Resize(632, 10, 688, 30), 0x00000000, 0x00000000, 0xffffffff, 0xffffffff);
  	driver->draw2DRectangle(Resize(632, 30, 688, 50), 0xffffffff, 0xffffffff, 0x00000000, 0x00000000);*/

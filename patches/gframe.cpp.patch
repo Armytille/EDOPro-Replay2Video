@@ -1,8 +1,8 @@
 diff --git a/gframe/gframe.cpp b/gframe/gframe.cpp
-index ea494aa8..7fdbea6e 100644
+index ea494aa8..35c4ae2e 100644
 --- a/gframe/gframe.cpp
 +++ b/gframe/gframe.cpp
-@@ -283,24 +283,32 @@ int edopro_main(const args_t& args) {
+@@ -283,24 +283,36 @@ int edopro_main(const args_t& args) {
  			CheckArguments(args);
  #ifdef WITH_REPLAY2VIDEO
  			if(ygo::replay2video::g_batch.active) {
@@ -26,6 +26,10 @@ index ea494aa8..7fdbea6e 100644
  					std::cerr << "[replay2video] Replay has no packets: " << cfg.input_replay << "\n";
  					return EXIT_FAILURE;
  				}
++				if(cfg.pov_player == 1) {
++					fprintf(stderr, "[r2v] swapping field to player 2 POV\n"); fflush(stderr);
++					ygo::mainGame->dField.ReplaySwap();
++				}
 +				fprintf(stderr, "[r2v] entering MainLoop\n"); fflush(stderr);
  				ygo::gGameConfig->quick_animation = false;
  				ygo::mainGame->wMainMenu->setVisible(false);

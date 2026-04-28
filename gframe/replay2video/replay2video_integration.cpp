@@ -117,6 +117,8 @@ bool RenderConfig::ParseArgs(int argc, wchar_t* argv[]) {
             std::string s;
             if (!next(s)) return false;
             cam_offset_y = std::stof(s);
+        } else if (arg == L"--player") {
+            next_int(pov_player);
         }
     }
     return true;
@@ -160,6 +162,7 @@ bool RenderConfig::LoadIni(const std::string& path) {
             else if (key == "speed") speed = std::stof(val);
             else if (key == "margin") margin = std::stof(val);
             else if (key == "cam_offset_y") cam_offset_y = std::stof(val);
+            else if (key == "player") pov_player = std::stoi(val);
         } catch (...) {
             // Ignore malformed values
         }

@@ -1,11 +1,11 @@
-# GPU H.264 NVENC - Low quality (fastest GPU render, small file)
-# Requires NVIDIA GPU. Compatible with every player.
+# GPU HEVC NVENC - Low quality (fastest GPU render, small file)
+# Requires NVIDIA GPU (GTX 10xx+). Better compression than H.264 at same bitrate.
 # Rename to config.ini and place next to replay2video.exe.
 
 workdir=D:\ProjectIgnis
 resolution=1280x720
 fps=30
-codec=h264_nvenc
+codec=hevc_nvenc
 preset=p1
 crf=32
 scale_filter=bilinear

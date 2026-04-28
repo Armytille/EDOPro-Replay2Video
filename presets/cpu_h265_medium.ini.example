@@ -1,6 +1,6 @@
 # CPU H.265/HEVC - Medium quality (smaller files than H.264, slower render)
 # Requires a modern player (VLC, mpv, recent browsers).
-# Rename to config.ini and place next to ygopro.exe.
+# Rename to config.ini and place next to replay2video.exe.
 
 workdir=D:\ProjectIgnis
 resolution=1920x1080

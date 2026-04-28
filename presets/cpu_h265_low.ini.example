@@ -1,13 +1,13 @@
-# CPU H.264 - Low quality (fast render, small file)
-# Compatible with every player and platform.
+# CPU H.265/HEVC - Low quality (fast render, small file)
+# Requires a modern player (VLC, mpv, recent browsers).
 # Rename to config.ini and place next to replay2video.exe.
 
 workdir=D:\ProjectIgnis
 resolution=1280x720
 fps=30
-codec=libx264
+codec=libx265
 preset=veryfast
-crf=28
+crf=30
 scale_filter=bilinear
 margin=0.10
 speed=1.0

@@ -1,6 +1,6 @@
 # GPU HEVC NVENC - High quality (best NVENC HEVC quality, GPU post-processing)
 # Requires NVIDIA GPU (GTX 10xx+) with Vulkan support. Requires modern player.
-# Rename to config.ini and place next to ygopro.exe.
+# Rename to config.ini and place next to replay2video.exe.
 
 workdir=D:\ProjectIgnis
 resolution=1920x1080

@@ -1,0 +1,14 @@
+# CPU AV1 SVT - Low quality (fast render, very small file)
+# Requires a modern player (VLC, mpv, recent browsers). AV1 not universally supported.
+# SVT-AV1 preset: 0=slowest/best, 13=fastest. Preset 10 gives fast encodes.
+# Rename to config.ini and place next to replay2video.exe.
+
+workdir=D:\ProjectIgnis
+resolution=1280x720
+fps=30
+codec=libsvtav1
+preset=10
+crf=35
+scale_filter=bilinear
+margin=0.10
+speed=1.0

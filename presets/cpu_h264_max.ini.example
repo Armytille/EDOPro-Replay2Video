@@ -1,15 +1,16 @@
-# GPU AV1 NVENC - Max quality (best quality/size ratio, archival)
-# Requires NVIDIA RTX 40xx with Vulkan. AV1 not supported on all players (use VLC/mpv).
+# CPU H.264 - Max quality (near-lossless, very slow render)
+# Compatible with every player and platform.
+# Note: libplacebo on CPU is slow — expect very long render times.
 # Rename to config.ini and place next to replay2video.exe.
 
 workdir=D:\ProjectIgnis
 resolution=1920x1080
 fps=60
-codec=av1_nvenc
-preset=p7
-crf=1
+codec=libx264
+preset=veryslow
+crf=14
+tune=film
 scale_filter=lanczos
 vf=libplacebo=upscaler=ewa_lanczos:downscaler=ewa_lanczos:antiringing=1:deband=1:dither=error_diffusion
-hwaccel=vulkan
 margin=0.10
 speed=1.0

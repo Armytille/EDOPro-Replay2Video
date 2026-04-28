@@ -1,7 +1,7 @@
 # CPU H.264 - High quality (near-lossless, slow render)
 # Compatible with every player and platform.
 # Note: libplacebo on CPU is slow — expect long render times.
-# Rename to config.ini and place next to ygopro.exe.
+# Rename to config.ini and place next to replay2video.exe.
 
 workdir=D:\ProjectIgnis
 resolution=1920x1080

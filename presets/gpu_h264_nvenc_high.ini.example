@@ -1,6 +1,6 @@
 # GPU H.264 NVENC - High quality (best NVENC H.264 quality, GPU post-processing)
 # Requires NVIDIA GPU with Vulkan support. Compatible with every player.
-# Rename to config.ini and place next to ygopro.exe.
+# Rename to config.ini and place next to replay2video.exe.
 
 workdir=D:\ProjectIgnis
 resolution=1920x1080

@@ -1,13 +1,13 @@
-# GPU AV1 NVENC - Max quality (best quality/size ratio, archival)
-# Requires NVIDIA RTX 40xx with Vulkan. AV1 not supported on all players (use VLC/mpv).
+# GPU H.264 NVENC - Max quality (best NVENC H.264 quality, GPU post-processing)
+# Requires NVIDIA GPU with Vulkan support. Compatible with every player.
 # Rename to config.ini and place next to replay2video.exe.
 
 workdir=D:\ProjectIgnis
 resolution=1920x1080
 fps=60
-codec=av1_nvenc
+codec=h264_nvenc
 preset=p7
-crf=1
+crf=14
 scale_filter=lanczos
 vf=libplacebo=upscaler=ewa_lanczos:downscaler=ewa_lanczos:antiringing=1:deband=1:dither=error_diffusion
 hwaccel=vulkan

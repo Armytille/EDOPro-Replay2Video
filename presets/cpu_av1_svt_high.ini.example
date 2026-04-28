@@ -1,15 +1,15 @@
-# CPU H.265/HEVC - High quality (excellent compression, very slow render)
-# Requires a modern player (VLC, mpv, recent browsers).
+# CPU AV1 SVT - High quality (near-lossless, very slow render)
+# Requires a modern player (VLC, mpv, recent browsers). AV1 not universally supported.
+# SVT-AV1 preset: 0=slowest/best, 13=fastest. Preset 4 for high quality at reasonable speed.
 # Note: libplacebo on CPU is slow — expect very long render times.
 # Rename to config.ini and place next to replay2video.exe.
 
 workdir=D:\ProjectIgnis
 resolution=1920x1080
 fps=60
-codec=libx265
-preset=slow
+codec=libsvtav1
+preset=4
 crf=20
-tune=grain
 scale_filter=lanczos
 vf=libplacebo=upscaler=ewa_lanczos:downscaler=ewa_lanczos:antiringing=1:deband=1
 margin=0.10

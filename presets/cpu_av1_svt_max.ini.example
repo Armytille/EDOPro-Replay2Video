@@ -1,0 +1,16 @@
+# CPU AV1 SVT - Max quality (near-lossless, extremely slow render)
+# Requires a modern player (VLC, mpv, recent browsers). AV1 not universally supported.
+# SVT-AV1 preset: 0=slowest/best, 13=fastest. Preset 1 for maximum quality.
+# Note: libplacebo on CPU is slow — expect extremely long render times.
+# Rename to config.ini and place next to replay2video.exe.
+
+workdir=D:\ProjectIgnis
+resolution=1920x1080
+fps=60
+codec=libsvtav1
+preset=0
+crf=12
+scale_filter=lanczos
+vf=libplacebo=upscaler=ewa_lanczos:downscaler=ewa_lanczos:antiringing=1:deband=1:dither=error_diffusion
+margin=0.10
+speed=1.0

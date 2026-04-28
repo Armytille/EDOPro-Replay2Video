@@ -1,6 +1,6 @@
 # CPU H.264 - Medium quality (balanced speed/quality)
 # Compatible with every player and platform.
-# Rename to config.ini and place next to ygopro.exe.
+# Rename to config.ini and place next to replay2video.exe.
 
 workdir=D:\ProjectIgnis
 resolution=1920x1080

@@ -1,6 +1,6 @@
 # GPU AV1 NVENC - Medium quality (fast GPU render, excellent compression)
 # Requires NVIDIA RTX 40xx with Vulkan. AV1 not supported on all players (use VLC/mpv).
-# Rename to config.ini and place next to ygopro.exe.
+# Rename to config.ini and place next to replay2video.exe.
 
 workdir=D:\ProjectIgnis
 resolution=1920x1080

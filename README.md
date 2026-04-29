@@ -39,15 +39,17 @@ Download the ZIP, extract anywhere, edit `config.ini`, done.
 ### Minimal
 
 ```bat
-replay2video.exe --render-replay duel.yrpX --output duel.mp4 --workdir "C:\EDOPro"
+replay2video.exe --render-replay "C:\replays\duel.yrpX" --output "C:\replays\duel.mp4" --workdir "C:\EDOPro"
 ```
+
+> `--render-replay`, `--output`, and `--workdir` all require full paths.
 
 ### With a config file (recommended)
 
 ```bat
-replay2video.exe --render-replay duel.yrpX --output duel.mp4
+replay2video.exe --render-replay "C:\replays\duel.yrpX" --output "C:\replays\duel.mp4"
 ```
-*(reads `config.ini` from the same folder)*
+*(reads `config.ini` from the same folder — set `workdir` there)*
 
 ### Higher quality, slower encode
 

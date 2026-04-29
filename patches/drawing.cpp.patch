@@ -1,5 +1,5 @@
 diff --git a/gframe/drawing.cpp b/gframe/drawing.cpp
-index 1e78f8ae..5363cb44 100644
+index 1e78f8ae..a459c55c 100644
 --- a/gframe/drawing.cpp
 +++ b/gframe/drawing.cpp
 @@ -531,30 +531,105 @@ void Game::DrawMisc() {
@@ -36,11 +36,11 @@ index 1e78f8ae..5363cb44 100644
 +		const irr::s32 bar_x1 = bar_x0 + bar_w;
 +		// Bar height: slim, fits numFont LP text (~16px scaled)
 +		const irr::s32 bar_h = std::max(14, (irr::s32)(sh * 0.020f));
-+		r2v_bar_y0 = 2;
++		r2v_bar_y0 = 0;
 +		r2v_bar_y1 = r2v_bar_y0 + bar_h;
-+		// Turn counter: fixed-width rect centered on screen, sized to fit numFont digits.
++		// Turn counter: fixed-width rect centered on screen, sized to fit lpcFont digits (48px).
 +		// The gap in the LP bars uses the same half-width so bars don't overlap the number.
-+		const irr::s32 turn_half_w = std::max(24, (irr::s32)(sh * 0.050f));
++		const irr::s32 turn_half_w = std::max(40, (irr::s32)(sh * 0.075f));
 +		const irr::s32 cx = sw / 2;
 +		r2v_turn_x0 = cx - turn_half_w;
 +		r2v_turn_x1 = cx + turn_half_w;
@@ -136,15 +136,12 @@ index 1e78f8ae..5363cb44 100644
  	{
  		int i = 0;
  		for (const auto& player : self) {
-@@ -617,9 +696,17 @@ void Game::DrawMisc() {
+@@ -617,9 +696,14 @@ void Game::DrawMisc() {
  	}
  	/*driver->draw2DRectangle(Resize(632, 10, 688, 30), 0x00000000, 0x00000000, 0xffffffff, 0xffffffff);
  	driver->draw2DRectangle(Resize(632, 30, 688, 50), 0xffffffff, 0xffffffff, 0x00000000, 0x00000000);*/
 -	DrawShadowText(lpcFont, gDataManager->GetNumString(dInfo.turn), Resize(635, 5, 685, 40), Resize(0, 0, 2, 0), skin::DUELFIELD_TURN_COUNT_VAL, 0x80000000, true);
 +	DrawShadowText(
-+#ifdef WITH_REPLAY2VIDEO
-+		r2v_active ? numFont :
-+#endif
 +		lpcFont,
 +		gDataManager->GetNumString(dInfo.turn),
 +		R2V_RECT(635, 5, 685, 40, r2v_turn_x0, r2v_bar_y0, r2v_turn_x1, r2v_bar_y1),

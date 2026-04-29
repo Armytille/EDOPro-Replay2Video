@@ -65,7 +65,7 @@ static AVPixelFormat codec_pix_fmt(const std::string& codec, bool has_vf) {
 bool VideoEncoder::InitFilterGraph(const RenderConfig& cfg) {
     int ret;
 
-    if (!cfg.vf.empty() && cfg.hwaccel == "vulkan" && cfg.codec != "libsvtav1") {
+    if (!cfg.vf.empty() && cfg.hwaccel == "vulkan") {
         std::string device_idx = cfg.hwaccel_device.empty() ? "0" : cfg.hwaccel_device;
         // linear_images=0: use staging buffers instead of VK_IMAGE_TILING_LINEAR for
         // CPU→GPU upload. NVIDIA does not support linear images beyond small sizes,

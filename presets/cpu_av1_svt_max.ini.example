@@ -11,7 +11,8 @@ codec=libsvtav1
 preset=0
 crf=12
 scale_filter=lanczos
-vf=libplacebo=upscaler=ewa_lanczos:downscaler=ewa_lanczos:antiringing=1:deband=1
+vf=libplacebo=upscaler=ewa_lanczos:downscaler=ewa_lanczos:antiringing=1:deband=1:deband_iterations=4:deband_radius=24:deband_threshold=4:chroma_location=left
 margin=0.10
 speed=1.0
+film_grain=20
 hwaccel=vulkan

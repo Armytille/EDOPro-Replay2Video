@@ -48,6 +48,7 @@ struct RenderConfig {
     float cam_top = 0.0f;
     float cam_bottom = 0.0f;
     int pov_player = 0; // 0 = player 1 (default), 1 = player 2 (swap field)
+    int film_grain = 0; // SVT-AV1 film grain synthesis (0=off, 1-50)
     bool dry_run = false;
     int dry_run_frames = 10;
     int dry_run_save_frame = 5;

@@ -230,9 +230,12 @@ bool VideoEncoder::Initialize(const RenderConfig& cfg) {
             // ac-bias=1.2: boost AC coefficient preservation for sharp edges (cards, text).
             std::string svt_params = "tune=0"
                                      ":keyint=" + std::to_string(fps_ * 5) +
+                                     ":scd=1"
                                      ":tf-strength=0"
                                      ":ac-bias=1.2"
                                      ":crf=" + std::to_string(cfg.crf);
+            if (cfg.film_grain > 0)
+                svt_params += ":film-grain=" + std::to_string(cfg.film_grain);
             av_opt_set(codec_ctx_->priv_data, "svtav1-params", svt_params.c_str(), 0);
         }
     }

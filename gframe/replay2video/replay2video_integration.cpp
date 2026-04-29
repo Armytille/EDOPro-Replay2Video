@@ -119,6 +119,8 @@ bool RenderConfig::ParseArgs(int argc, wchar_t* argv[]) {
             cam_offset_y = std::stof(s);
         } else if (arg == L"--player") {
             next_int(pov_player);
+        } else if (arg == L"--film-grain") {
+            next_int(film_grain);
         }
     }
     return true;
@@ -163,6 +165,7 @@ bool RenderConfig::LoadIni(const std::string& path) {
             else if (key == "margin") margin = std::stof(val);
             else if (key == "cam_offset_y") cam_offset_y = std::stof(val);
             else if (key == "player") pov_player = std::stoi(val);
+            else if (key == "film_grain") film_grain = std::stoi(val);
         } catch (...) {
             // Ignore malformed values
         }

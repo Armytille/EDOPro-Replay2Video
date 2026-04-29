@@ -1,5 +1,5 @@
 diff --git a/gframe/game.cpp b/gframe/game.cpp
-index 361b1c87..bd998733 100644
+index 361b1c87..344936a8 100644
 --- a/gframe/game.cpp
 +++ b/gframe/game.cpp
 @@ -2006,6 +2006,22 @@ bool Game::MainLoop() {
@@ -60,6 +60,15 @@ index 361b1c87..bd998733 100644
  	camera->setTarget(irr::core::vector3df(FIELD_X, 0, 0));
  	UpdateCameraPosition();
  
+@@ -2243,7 +2276,7 @@ bool Game::MainLoop() {
+ 		DrawGUI();
+ 		DrawSpec();
+ #ifdef WITH_REPLAY2VIDEO
+-		if(replay2video::g_batch.active) {
++		if(replay2video::g_batch.active && !replay2video::g_batch.replay_finished) {
+ 			replay2video::g_integration.ProcessFrame(driver);
+ 			replay2video::g_integration.EndFrame();
+ 		}
 @@ -3324,6 +3357,14 @@ int Game::GetMasterRule(uint64_t param, uint32_t forbidden, int* truerule) {
  		return 2;
  }

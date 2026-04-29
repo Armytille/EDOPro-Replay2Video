@@ -216,7 +216,15 @@ Optional: GPU filtergraph via Vulkan + libplacebo for high-quality debanding and
 
 ## Building from Source
 
-See [CLAUDE.md](CLAUDE.md) for the full build guide (requires Visual Studio 2022 Build Tools + FFmpeg dev libs).
+Requires Visual Studio 2022 Build Tools (C++17) and Git.
+
+```bat
+git clone https://github.com/Armytille/EDOPro-Replay2Video.git
+cd EDOPro-Replay2Video
+build_windows.bat
+```
+
+`build_windows.bat` clones EDOPro with submodules, downloads FFmpeg dev libs, applies all patches, and compiles. Output: `edopro\bin\x64\release\replay2video.exe`. Copy `ffmpeg-dev\bin\*.dll` next to the exe once after building.
 
 ---
 

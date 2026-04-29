@@ -207,9 +207,9 @@ void FrameCapture::SavePNG(AVFrame* frame, const std::string& path) {
         std::fill(row.begin(), row.end(), 0);
         const uint8_t* src_row = src + y * stride;
         for (int x = 0; x < w; ++x) {
-            row[x * 3 + 0] = src_row[x * 4 + 2]; // B
+            row[x * 3 + 0] = src_row[x * 4 + 0]; // B (was R)
             row[x * 3 + 1] = src_row[x * 4 + 1]; // G
-            row[x * 3 + 2] = src_row[x * 4 + 0]; // R
+            row[x * 3 + 2] = src_row[x * 4 + 2]; // R (was B)
         }
         std::fwrite(row.data(), 1, row_padded, f);
     }

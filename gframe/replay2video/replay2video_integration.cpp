@@ -15,6 +15,7 @@
 
 #include "video_encoder.h"
 #include "offscreen_capture.h"
+#include "../utils.h"
 
 namespace ygo {
 namespace replay2video {
@@ -336,18 +337,20 @@ void Integration::Shutdown() {
 }
 
 bool Integration::ProcessFrame(irr::video::IVideoDriver* driver) {
-    if (!capture || !encoder) return false;
-    
+    if (!capture) return false;
+    if (!encoder && !g_batch.config.dry_run) return false;
+
     auto frame = capture->Capture(driver);
     if (!frame) {
         std::cerr << "[replay2video] Frame capture failed\n";
         return false;
     }
-    
+
     if (g_batch.config.dry_run) {
         uint64_t fc = g_batch.frame_count.load();
         if (fc == static_cast<uint64_t>(g_batch.config.dry_run_save_frame)) {
-            capture->SavePNG(frame, "dry_run_frame.png");
+            std::string png_path = ygo::Utils::ToUTF8IfNeeded(ygo::Utils::GetExeFolder()) + "dry_run_frame.png";
+            capture->SavePNG(frame, png_path);
         }
         capture->ReleaseFrame(frame);
         return true;

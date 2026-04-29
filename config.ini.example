@@ -3,7 +3,7 @@
 # CLI flags override these values when both are specified.
 
 # Working directory: path to your EDOPro installation.
-# Must contain: config/strings.conf, pics/, textures/, skin/, fonts/
+# Must contain: config/strings.conf, pics/, textures/, skin/, fonts/, cards.cdb
 workdir=D:\ProjectIgnis
 
 # Output resolution.
@@ -12,39 +12,59 @@ resolution=1920x1080
 # Target frame rate.
 fps=60
 
+# Simulation FPS (0 = same as fps).
+# Set lower than fps to decouple game tick rate from output frame rate.
+# Example: sim_fps=30 with fps=60 doubles each game frame (smoother motion, same game speed).
+# sim_fps=0
+
 # Video codec.
 #   libx264    = software H.264, compatible everywhere
-#   h264_nvenc = NVIDIA GPU H.264, fast
-#   av1_nvenc  = NVIDIA GPU AV1, best quality/size ratio (RTX 30xx+)
-#   libx265    = software HEVC, smaller files, very slow
-codec=av1_nvenc
+#   libx265    = software H.265, smaller files, slower encode
+#   libsvtav1  = software AV1 (SVT-AV1), best quality/size ratio on CPU, 10-bit output
+#   h264_nvenc = NVIDIA GPU H.264, fast (GTX 10xx+)
+#   hevc_nvenc = NVIDIA GPU H.265 (GTX 10xx+)
+#   av1_nvenc  = NVIDIA GPU AV1, best compression (RTX 40xx+ only), 10-bit output
+codec=libx264
 
 # Encoding preset.
-# NVENC presets: p1 (fastest) to p7 (best quality)
-# x264/x265 presets: ultrafast veryfast medium slow veryslow
-preset=p7
+# x264/x265:   ultrafast  superfast  veryfast  faster  fast  medium  slow  slower  veryslow
+# libsvtav1:   0 (slowest/best quality) to 13 (fastest)
+# NVENC:       p1 (fastest) to p7 (best quality)
+preset=veryfast
 
-# Constant Rate Factor. 0 = lossless, higher = more compression.
-# av1_nvenc: 0 (lossless) recommended for archival quality
-# libx264:   18 (near-lossless) to 23 (default)
-crf=0
+# Constant Rate Factor / Constant Quality.
+# Lower = better quality, larger file. 0 = lossless (not supported by av1_nvenc).
+# libx264 recommended:  18 (near-lossless) to 28 (acceptable)
+# libx265 recommended:  16 to 26
+# libsvtav1 recommended: 12 to 20
+# NVENC recommended:    6 to 24
+crf=23
 
-# Encoder tune (optional).
-# NVENC: hq, ll (low latency), ull, lossless
-# x264/x265: film, animation, grain
-tune=hq
+# Encoder tune (optional). CPU codecs only.
+# x264: film  animation  grain
+# x265: grain  animation  zerolatency
+# tune=film
+
+# SVT-AV1 film grain synthesis (0 = disabled, 1-50 = grain strength).
+# Adds synthetic grain matched to the source to improve compression of noisy content.
+# film_grain=0
 
 # Scaling algorithm for resolution conversion.
-#   bilinear  - fast
-#   lanczos   - sharper, better quality
-scale_filter=lanczos
+#   bilinear  - fast, soft edges
+#   lanczos   - slower, sharper quality
+scale_filter=bilinear
 
-# POV player. 0 = player 1 (bottom), 1 = player 2 (top).
+# POV player. 0 = player 1 (bottom), 1 = player 2 (top, swaps field orientation).
 player=0
 
 # Background margin as a fraction of width (0.0 to 0.45).
-# 0.10 = 10% black margin each side.
+# Controls how much background is visible around the field.
+# 0.0 = tight crop, 0.10 = 10% margin each side (default), 0.45 = maximum.
 margin=0.10
+
+# Vertical camera target offset. Controls balance between both players' hands.
+# Default 0.7 centers the field with a slight bias toward Player 1.
+# cam_offset_y=0.7
 
 # Playback speed multiplier. 1.0 = normal, 1.5 = 50% faster.
 speed=1.0
@@ -53,8 +73,10 @@ speed=1.0
 # bitrate=8000
 
 # FFmpeg video filter string (optional).
-# vf=libplacebo=upscaler=ewa_lanczos:antiringing=1
+# Example (high-quality libplacebo debanding + scaling via Vulkan):
+# vf=libplacebo=upscaler=ewa_lanczos:downscaler=ewa_lanczos:antiringing=1:deband=1:deband_iterations=4:deband_radius=24:deband_threshold=4:chroma_location=left
 
 # Hardware acceleration for video filters (optional).
+# vulkan enables GPU-accelerated filtergraph (required for libplacebo).
 # hwaccel=vulkan
 # hwaccel_device=0

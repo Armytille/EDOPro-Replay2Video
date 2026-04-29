@@ -58,18 +58,27 @@ replay2video.exe --render-replay duel.yrpX --output duel.mp4 ^
   --codec libx265 --crf 18 --preset medium
 ```
 
+### AV1 (SVT-AV1) — best quality/size ratio ⭐ recommended
+
+CPU-only, slower encode but significantly smaller files at equal or better quality than H.264/H.265.
+
+```bat
+replay2video.exe --render-replay "C:\replays\duel.yrpX" --output "C:\replays\duel.mp4" ^
+  --codec libsvtav1 --crf 16 --preset 4 --workdir "C:\EDOPro"
+```
+
 ### NVIDIA GPU — fast
 
 ```bat
-replay2video.exe --render-replay duel.yrpX --output duel.mkv ^
-  --codec hevc_nvenc --crf 18 --preset p4
+replay2video.exe --render-replay "C:\replays\duel.yrpX" --output "C:\replays\duel.mkv" ^
+  --codec hevc_nvenc --crf 18 --preset p4 --workdir "C:\EDOPro"
 ```
 
 ### NVIDIA GPU — maximum quality (libplacebo debanding)
 
 ```bat
-replay2video.exe --render-replay duel.yrpX --output duel.mkv ^
-  --codec hevc_nvenc --crf 6 --preset p7 --hwaccel vulkan ^
+replay2video.exe --render-replay "C:\replays\duel.yrpX" --output "C:\replays\duel.mkv" ^
+  --codec hevc_nvenc --crf 6 --preset p7 --hwaccel vulkan --workdir "C:\EDOPro" ^
   --vf "libplacebo=upscaler=ewa_lanczos:downscaler=ewa_lanczos:antiringing=1:deband=1:deband_iterations=4:deband_radius=24:deband_threshold=4:chroma_location=left"
 ```
 
@@ -84,7 +93,9 @@ Renders 10 frames and saves `dry_run_frame.png` for inspection.
 
 ## Presets
 
-Copy any file from `presets/` as `config.ini`. Each preset is a ready-to-use configuration:
+Copy any file from `presets/` as `config.ini`. Each preset is a ready-to-use configuration.
+
+> **Recommended:** `cpu_av1_svt_medium` or `cpu_av1_svt_high` — best quality/size ratio of all CPU codecs. Files are significantly lighter than H.264/H.265 at equal or better quality. The trade-off is encode time (CPU-only, slower than NVENC).
 
 | File | Codec | Quality | GPU |
 |------|-------|---------|-----|

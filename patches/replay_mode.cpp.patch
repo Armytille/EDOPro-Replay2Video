@@ -1,1 +1,23 @@
-diff --git a/gframe/replay_mode.cpp b/gframe/replay_mode.cppindex c98aaf83..41fa7d32 100644--- a/gframe/replay_mode.cpp+++ b/gframe/replay_mode.cpp@@ -115,7 +115,8 @@ bool ReplayMode::InitBatch() { 	mainGame->dInfo.duel_field = mainGame->GetMasterRule(mainGame->dInfo.duel_params); 	matManager.SetActiveVertices(mainGame->dInfo.HasFieldFlag(DUEL_3_COLUMNS_FIELD), 	                             !mainGame->dInfo.HasFieldFlag(DUEL_SEPARATE_PZONE));-	mainGame->SetPhaseButtons();+	mainGame->wPhase->setVisible(true);+	mainGame->SetPhaseButtons(false); 	mainGame->dInfo.isInDuel = true; 	mainGame->dInfo.isStarted = true; 	mainGame->dInfo.checkRematch = false;@@ -202,6 +203,8 @@ int ReplayMode::ReplayThread() { 	} #ifdef WITH_REPLAY2VIDEO 	if(replay2video::g_batch.active) {+		mainGame->wPhase->setVisible(true);+		mainGame->SetPhaseButtons(true); 		ReplayThreadBatchWrapper(); 		return 0; 	}
+diff --git a/gframe/replay_mode.cpp b/gframe/replay_mode.cpp
+index c98aaf83..41fa7d32 100644
+--- a/gframe/replay_mode.cpp
++++ b/gframe/replay_mode.cpp
+@@ -115,7 +115,8 @@ bool ReplayMode::InitBatch() {
+ 	mainGame->dInfo.duel_field = mainGame->GetMasterRule(mainGame->dInfo.duel_params);
+ 	matManager.SetActiveVertices(mainGame->dInfo.HasFieldFlag(DUEL_3_COLUMNS_FIELD),
+ 	                             !mainGame->dInfo.HasFieldFlag(DUEL_SEPARATE_PZONE));
+-	mainGame->SetPhaseButtons();
++	mainGame->wPhase->setVisible(true);
++	mainGame->SetPhaseButtons(false);
+ 	mainGame->dInfo.isInDuel = true;
+ 	mainGame->dInfo.isStarted = true;
+ 	mainGame->dInfo.checkRematch = false;
+@@ -202,6 +203,8 @@ int ReplayMode::ReplayThread() {
+ 	}
+ #ifdef WITH_REPLAY2VIDEO
+ 	if(replay2video::g_batch.active) {
++		mainGame->wPhase->setVisible(true);
++		mainGame->SetPhaseButtons(true);
+ 		ReplayThreadBatchWrapper();
+ 		return 0;
+ 	}

@@ -1,1 +1,112 @@
-diff --git a/gframe/game.cpp b/gframe/game.cppindex 361b1c87..344936a8 100644--- a/gframe/game.cpp+++ b/gframe/game.cpp@@ -2006,6 +2006,22 @@ bool Game::MainLoop() { 	irr::core::matrix4 mProjection; 	camera = smgr->addCameraSceneNode(0); 	auto UpdateAspectRatio = [this]() {+#ifdef WITH_REPLAY2VIDEO+		if(replay2video::g_batch.active) {+			const auto& cfg = replay2video::g_batch.config;+			if(cfg.cam_left != 0.0f || cfg.cam_right != 0.0f) {+				irr::core::matrix4 mProj;+				mProj.buildProjectionMatrixPerspectiveLH(+					cfg.cam_right - cfg.cam_left,+					cfg.cam_top - cfg.cam_bottom,+					1.0f, 100.0f);+				mProj[8] = (cfg.cam_left + cfg.cam_right) / (cfg.cam_left - cfg.cam_right);+				mProj[9] = (cfg.cam_top + cfg.cam_bottom) / (cfg.cam_bottom - cfg.cam_top);+				camera->setProjectionMatrix(mProj);+				return;+			}+		}+#endif 		if(!gGameConfig->keep_aspect_ratio) { 			camera->setProjectionMatrix(defaultProjection); 			return;@@ -2014,8 +2030,18 @@ bool Game::MainLoop() { 		camera->setProjectionMatrix(BuildProjectionMatrix(CAMERA_BOTTOM, CAMERA_TOP, ratio)); 	}; 	auto UpdateCameraPosition = [this] {-		camera->setPosition(getPosition());-		camera->setUpVector(getUpVector());+#ifdef WITH_REPLAY2VIDEO+		if(replay2video::g_batch.active) {+			const auto& cfg = replay2video::g_batch.config;+			camera->setPosition(irr::core::vector3df(cfg.cam_offset_x, FIELD_Y, FIELD_Z));+			camera->setUpVector(getUpVector());+			camera->setTarget(irr::core::vector3df(cfg.cam_offset_x, cfg.cam_offset_y, 0.f));+		} else+#endif+		{+			camera->setPosition(getPosition());+			camera->setUpVector(getUpVector());+		} 		if(dInfo.isInDuel) 			dField.RefreshAllCards(); 	};@@ -2024,6 +2050,13 @@ bool Game::MainLoop() { 	current_topdown = gGameConfig->topdown_view; 	current_keep_aspect_ratio = gGameConfig->keep_aspect_ratio; +#ifdef WITH_REPLAY2VIDEO+	if(replay2video::g_batch.active) {+		const auto& cfg = replay2video::g_batch.config;+		camera->setPosition(irr::core::vector3df(cfg.cam_offset_x, FIELD_Y, FIELD_Z));+		camera->setTarget(irr::core::vector3df(cfg.cam_offset_x, cfg.cam_offset_y, 0.f));+	} else+#endif 	camera->setTarget(irr::core::vector3df(FIELD_X, 0, 0)); 	UpdateCameraPosition(); @@ -2243,7 +2276,7 @@ bool Game::MainLoop() { 		DrawGUI(); 		DrawSpec(); #ifdef WITH_REPLAY2VIDEO-		if(replay2video::g_batch.active) {+		if(replay2video::g_batch.active && !replay2video::g_batch.replay_finished) { 			replay2video::g_integration.ProcessFrame(driver); 			replay2video::g_integration.EndFrame(); 		}@@ -3324,6 +3357,14 @@ int Game::GetMasterRule(uint64_t param, uint32_t forbidden, int* truerule) { 		return 2; } void Game::ResizePhaseButtons() {+#ifdef WITH_REPLAY2VIDEO+	if(replay2video::g_batch.active) {+		// Fall through to the keep_aspect_ratio magic formula below, then apply a Y correction.+		// The magic formula assumes the normal camera (target Y=0). In r2v the camera targets+		// cam_offset_y=0.7, which shifts the visual separator upward on screen.+		// Correction: ~56 logical units per unit of cam_offset_y (empirically derived).+	} else+#endif 	if(gGameConfig->alternative_phase_layout) { 		wPhase->setRelativePosition(Resize(940, 80, 990, 340)); 		return;@@ -3355,6 +3396,25 @@ void Game::ResizePhaseButtons() { 		y1 = static_cast<irr::s32>(std::round(310 * window_scale.Y)); 		y2 = static_cast<irr::s32>(std::round(330 * window_scale.Y)); 	}+#ifdef WITH_REPLAY2VIDEO+	if(replay2video::g_batch.active) {+		// Shift Y up: cam_offset_y tilts the camera so the visual separator is above screen center.+		const irr::s32 y_correction = static_cast<irr::s32>(std::round(+			replay2video::g_batch.config.cam_offset_y * 56.0f * window_scale.Y));+		y1 -= y_correction;+		y2 -= y_correction;++		// Scale up width and height by 15% for r2v readability.+		const irr::s32 phase_w = static_cast<irr::s32>(std::round(DEFAULT_WIDTH * window_scale.X * 1.15f));+		const irr::s32 cx = (irr::s32)window_size.Width / 2;+		x1 = cx - phase_w / 2;+		x2 = cx + phase_w / 2;+		const irr::s32 center_y = (y1 + y2) / 2;+		const irr::s32 half_h = static_cast<irr::s32>(std::round((y2 - y1) * 0.5f * 1.15f));+		y1 = center_y - half_h;+		y2 = center_y + half_h;+	}+#endif 	wPhase->setRelativePosition(Scale(x1, y1, x2, y2)); } void Game::SetPhaseButtons(bool visibility) {
+diff --git a/gframe/game.cpp b/gframe/game.cpp
+index 361b1c87..344936a8 100644
+--- a/gframe/game.cpp
++++ b/gframe/game.cpp
+@@ -2006,6 +2006,22 @@ bool Game::MainLoop() {
+ 	irr::core::matrix4 mProjection;
+ 	camera = smgr->addCameraSceneNode(0);
+ 	auto UpdateAspectRatio = [this]() {
++#ifdef WITH_REPLAY2VIDEO
++		if(replay2video::g_batch.active) {
++			const auto& cfg = replay2video::g_batch.config;
++			if(cfg.cam_left != 0.0f || cfg.cam_right != 0.0f) {
++				irr::core::matrix4 mProj;
++				mProj.buildProjectionMatrixPerspectiveLH(
++					cfg.cam_right - cfg.cam_left,
++					cfg.cam_top - cfg.cam_bottom,
++					1.0f, 100.0f);
++				mProj[8] = (cfg.cam_left + cfg.cam_right) / (cfg.cam_left - cfg.cam_right);
++				mProj[9] = (cfg.cam_top + cfg.cam_bottom) / (cfg.cam_bottom - cfg.cam_top);
++				camera->setProjectionMatrix(mProj);
++				return;
++			}
++		}
++#endif
+ 		if(!gGameConfig->keep_aspect_ratio) {
+ 			camera->setProjectionMatrix(defaultProjection);
+ 			return;
+@@ -2014,8 +2030,18 @@ bool Game::MainLoop() {
+ 		camera->setProjectionMatrix(BuildProjectionMatrix(CAMERA_BOTTOM, CAMERA_TOP, ratio));
+ 	};
+ 	auto UpdateCameraPosition = [this] {
+-		camera->setPosition(getPosition());
+-		camera->setUpVector(getUpVector());
++#ifdef WITH_REPLAY2VIDEO
++		if(replay2video::g_batch.active) {
++			const auto& cfg = replay2video::g_batch.config;
++			camera->setPosition(irr::core::vector3df(cfg.cam_offset_x, FIELD_Y, FIELD_Z));
++			camera->setUpVector(getUpVector());
++			camera->setTarget(irr::core::vector3df(cfg.cam_offset_x, cfg.cam_offset_y, 0.f));
++		} else
++#endif
++		{
++			camera->setPosition(getPosition());
++			camera->setUpVector(getUpVector());
++		}
+ 		if(dInfo.isInDuel)
+ 			dField.RefreshAllCards();
+ 	};
+@@ -2024,6 +2050,13 @@ bool Game::MainLoop() {
+ 	current_topdown = gGameConfig->topdown_view;
+ 	current_keep_aspect_ratio = gGameConfig->keep_aspect_ratio;
+ 
++#ifdef WITH_REPLAY2VIDEO
++	if(replay2video::g_batch.active) {
++		const auto& cfg = replay2video::g_batch.config;
++		camera->setPosition(irr::core::vector3df(cfg.cam_offset_x, FIELD_Y, FIELD_Z));
++		camera->setTarget(irr::core::vector3df(cfg.cam_offset_x, cfg.cam_offset_y, 0.f));
++	} else
++#endif
+ 	camera->setTarget(irr::core::vector3df(FIELD_X, 0, 0));
+ 	UpdateCameraPosition();
+ 
+@@ -2243,7 +2276,7 @@ bool Game::MainLoop() {
+ 		DrawGUI();
+ 		DrawSpec();
+ #ifdef WITH_REPLAY2VIDEO
+-		if(replay2video::g_batch.active) {
++		if(replay2video::g_batch.active && !replay2video::g_batch.replay_finished) {
+ 			replay2video::g_integration.ProcessFrame(driver);
+ 			replay2video::g_integration.EndFrame();
+ 		}
+@@ -3324,6 +3357,14 @@ int Game::GetMasterRule(uint64_t param, uint32_t forbidden, int* truerule) {
+ 		return 2;
+ }
+ void Game::ResizePhaseButtons() {
++#ifdef WITH_REPLAY2VIDEO
++	if(replay2video::g_batch.active) {
++		// Fall through to the keep_aspect_ratio magic formula below, then apply a Y correction.
++		// The magic formula assumes the normal camera (target Y=0). In r2v the camera targets
++		// cam_offset_y=0.7, which shifts the visual separator upward on screen.
++		// Correction: ~56 logical units per unit of cam_offset_y (empirically derived).
++	} else
++#endif
+ 	if(gGameConfig->alternative_phase_layout) {
+ 		wPhase->setRelativePosition(Resize(940, 80, 990, 340));
+ 		return;
+@@ -3355,6 +3396,25 @@ void Game::ResizePhaseButtons() {
+ 		y1 = static_cast<irr::s32>(std::round(310 * window_scale.Y));
+ 		y2 = static_cast<irr::s32>(std::round(330 * window_scale.Y));
+ 	}
++#ifdef WITH_REPLAY2VIDEO
++	if(replay2video::g_batch.active) {
++		// Shift Y up: cam_offset_y tilts the camera so the visual separator is above screen center.
++		const irr::s32 y_correction = static_cast<irr::s32>(std::round(
++			replay2video::g_batch.config.cam_offset_y * 56.0f * window_scale.Y));
++		y1 -= y_correction;
++		y2 -= y_correction;
++
++		// Scale up width and height by 15% for r2v readability.
++		const irr::s32 phase_w = static_cast<irr::s32>(std::round(DEFAULT_WIDTH * window_scale.X * 1.15f));
++		const irr::s32 cx = (irr::s32)window_size.Width / 2;
++		x1 = cx - phase_w / 2;
++		x2 = cx + phase_w / 2;
++		const irr::s32 center_y = (y1 + y2) / 2;
++		const irr::s32 half_h = static_cast<irr::s32>(std::round((y2 - y1) * 0.5f * 1.15f));
++		y1 = center_y - half_h;
++		y2 = center_y + half_h;
++	}
++#endif
+ 	wPhase->setRelativePosition(Scale(x1, y1, x2, y2));
+ }
+ void Game::SetPhaseButtons(bool visibility) {

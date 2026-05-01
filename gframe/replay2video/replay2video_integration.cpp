@@ -362,6 +362,14 @@ bool Integration::ProcessFrame(irr::video::IVideoDriver* driver) {
         ok = encoder->EncodeFrame(frame);
     }
     capture->ReleaseFrame(frame);
+
+    // Emit progress for the GUI launcher (every 10 sim-frames to avoid stdout saturation).
+    uint64_t fc = g_batch.frame_count.load();
+    if (fc % 10 == 0) {
+        printf("[r2v:frame] %llu\n", (unsigned long long)fc);
+        fflush(stdout);
+    }
+
     return ok;
 }
 

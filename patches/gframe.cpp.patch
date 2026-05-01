@@ -1,1 +1,58 @@
-diff --git a/gframe/gframe.cpp b/gframe/gframe.cppindex ea494aa8..847a5b1f 100644--- a/gframe/gframe.cpp+++ b/gframe/gframe.cpp@@ -162,6 +162,7 @@ int edopro_main(const args_t& args) { 		if(r2v_argv_pre && r2v_argc_pre > 1) { 			ygo::replay2video::RenderConfig r2v_cfg_pre; 			r2v_cfg_pre.ParseArgs(r2v_argc_pre, r2v_argv_pre);+			r2v_cfg_pre.LoadIni(ygo::Utils::ToUTF8IfNeeded(ygo::Utils::GetExeFolder()) + "config.ini"); 			r2v_cfg_pre.Normalize(); 			LocalFree(r2v_argv_pre); 			if(!r2v_cfg_pre.input_replay.empty()) {@@ -230,7 +231,7 @@ int edopro_main(const args_t& args) { 		if(r2v_argv && r2v_argc > 1) { 			ygo::replay2video::RenderConfig r2v_cfg; 			r2v_cfg.ParseArgs(r2v_argc, r2v_argv);-			r2v_cfg.LoadIni("config.ini");+			r2v_cfg.LoadIni(ygo::Utils::ToUTF8IfNeeded(ygo::Utils::GetExeFolder()) + "config.ini"); 			r2v_cfg.Normalize(); 			LocalFree(r2v_argv); 			if(!r2v_cfg.input_replay.empty()) {@@ -283,24 +284,36 @@ int edopro_main(const args_t& args) { 			CheckArguments(args); #ifdef WITH_REPLAY2VIDEO 			if(ygo::replay2video::g_batch.active) {+				fprintf(stderr, "[r2v] Integration.Initialize()\n"); fflush(stderr); 				if(!ygo::replay2video::g_integration.Initialize()) { 					std::cerr << "[replay2video] Integration init failed.\n"; 					return EXIT_FAILURE; 				}+				fprintf(stderr, "[r2v] SetupFBO\n"); fflush(stderr); 				ygo::replay2video::g_integration.SetupFBO(ygo::mainGame->device->getVideoDriver()); 				auto& cfg = ygo::replay2video::g_batch.config;+				// Always load card art at 1024px — the default (177px * dpi_scale) is too small for video output.+				ygo::mainGame->imageManager.SetArtTextureSize(1024, 1024);+				fprintf(stderr, "[r2v] OpenReplay: %s\n", cfg.input_replay.c_str()); fflush(stderr); 				if(!ygo::ReplayMode::cur_replay.OpenReplay(ygo::Utils::ToPathString(cfg.input_replay))) { 					std::cerr << "[replay2video] Failed to open replay: " << cfg.input_replay << "\n"; 					return EXIT_FAILURE; 				}+				fprintf(stderr, "[r2v] InitBatch\n"); fflush(stderr); 				if(!ygo::ReplayMode::InitBatch()) { 					std::cerr << "[replay2video] Replay has no packets: " << cfg.input_replay << "\n"; 					return EXIT_FAILURE; 				}+				if(cfg.pov_player == 1) {+					fprintf(stderr, "[r2v] swapping field to player 2 POV\n"); fflush(stderr);+					ygo::mainGame->dField.ReplaySwap();+				}+				fprintf(stderr, "[r2v] entering MainLoop\n"); fflush(stderr); 				ygo::gGameConfig->quick_animation = false; 				ygo::mainGame->wMainMenu->setVisible(false); 				ygo::mainGame->mTopMenu->setVisible(false); 				ygo::mainGame->MainLoop();+				fprintf(stderr, "[r2v] MainLoop done\n"); fflush(stderr); 				ygo::replay2video::g_integration.Shutdown(); 				return EXIT_SUCCESS; 			}
+diff --git a/gframe/gframe.cpp b/gframe/gframe.cpp
+index ea494aa8..847a5b1f 100644
+--- a/gframe/gframe.cpp
++++ b/gframe/gframe.cpp
+@@ -162,6 +162,7 @@ int edopro_main(const args_t& args) {
+ 		if(r2v_argv_pre && r2v_argc_pre > 1) {
+ 			ygo::replay2video::RenderConfig r2v_cfg_pre;
+ 			r2v_cfg_pre.ParseArgs(r2v_argc_pre, r2v_argv_pre);
++			r2v_cfg_pre.LoadIni(ygo::Utils::ToUTF8IfNeeded(ygo::Utils::GetExeFolder()) + "config.ini");
+ 			r2v_cfg_pre.Normalize();
+ 			LocalFree(r2v_argv_pre);
+ 			if(!r2v_cfg_pre.input_replay.empty()) {
+@@ -230,7 +231,7 @@ int edopro_main(const args_t& args) {
+ 		if(r2v_argv && r2v_argc > 1) {
+ 			ygo::replay2video::RenderConfig r2v_cfg;
+ 			r2v_cfg.ParseArgs(r2v_argc, r2v_argv);
+-			r2v_cfg.LoadIni("config.ini");
++			r2v_cfg.LoadIni(ygo::Utils::ToUTF8IfNeeded(ygo::Utils::GetExeFolder()) + "config.ini");
+ 			r2v_cfg.Normalize();
+ 			LocalFree(r2v_argv);
+ 			if(!r2v_cfg.input_replay.empty()) {
+@@ -283,24 +284,36 @@ int edopro_main(const args_t& args) {
+ 			CheckArguments(args);
+ #ifdef WITH_REPLAY2VIDEO
+ 			if(ygo::replay2video::g_batch.active) {
++				fprintf(stderr, "[r2v] Integration.Initialize()\n"); fflush(stderr);
+ 				if(!ygo::replay2video::g_integration.Initialize()) {
+ 					std::cerr << "[replay2video] Integration init failed.\n";
+ 					return EXIT_FAILURE;
+ 				}
++				fprintf(stderr, "[r2v] SetupFBO\n"); fflush(stderr);
+ 				ygo::replay2video::g_integration.SetupFBO(ygo::mainGame->device->getVideoDriver());
+ 				auto& cfg = ygo::replay2video::g_batch.config;
++				// Always load card art at 1024px — the default (177px * dpi_scale) is too small for video output.
++				ygo::mainGame->imageManager.SetArtTextureSize(1024, 1024);
++				fprintf(stderr, "[r2v] OpenReplay: %s\n", cfg.input_replay.c_str()); fflush(stderr);
+ 				if(!ygo::ReplayMode::cur_replay.OpenReplay(ygo::Utils::ToPathString(cfg.input_replay))) {
+ 					std::cerr << "[replay2video] Failed to open replay: " << cfg.input_replay << "\n";
+ 					return EXIT_FAILURE;
+ 				}
++				fprintf(stderr, "[r2v] InitBatch\n"); fflush(stderr);
+ 				if(!ygo::ReplayMode::InitBatch()) {
+ 					std::cerr << "[replay2video] Replay has no packets: " << cfg.input_replay << "\n";
+ 					return EXIT_FAILURE;
+ 				}
++				if(cfg.pov_player == 1) {
++					fprintf(stderr, "[r2v] swapping field to player 2 POV\n"); fflush(stderr);
++					ygo::mainGame->dField.ReplaySwap();
++				}
++				fprintf(stderr, "[r2v] entering MainLoop\n"); fflush(stderr);
+ 				ygo::gGameConfig->quick_animation = false;
+ 				ygo::mainGame->wMainMenu->setVisible(false);
+ 				ygo::mainGame->mTopMenu->setVisible(false);
+ 				ygo::mainGame->MainLoop();
++				fprintf(stderr, "[r2v] MainLoop done\n"); fflush(stderr);
+ 				ygo::replay2video::g_integration.Shutdown();
+ 				return EXIT_SUCCESS;
+ 			}

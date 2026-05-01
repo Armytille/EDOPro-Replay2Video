@@ -11,7 +11,7 @@ Convert EDOPro `.yrpX` replay files into `.mp4` / `.mkv` videos using the actual
 
 **[→ Latest Release](https://github.com/Armytille/EDOPro-Replay2Video/releases/latest)**
 
-Download the ZIP, extract anywhere, edit `config.ini`, done.
+Download the ZIP, extract anywhere. Use the GUI or the CLI.
 
 ---
 
@@ -26,15 +26,30 @@ Download the ZIP, extract anywhere, edit `config.ini`, done.
 ## Setup
 
 1. Extract the ZIP anywhere
-2. Copy `config.ini.example` → `config.ini` and set `workdir` to your EDOPro folder:
+2. **GUI:** double-click `replay2videoGUI.exe` — no configuration needed to start
+3. **CLI:** copy `config.ini.example` → `config.ini` and set `workdir` to your EDOPro folder:
    ```ini
    workdir=C:\EDOPro
    ```
-3. Pick a preset from `presets/` that matches your hardware, copy it as `config.ini`
+4. Optionally pick a preset from `presets/` that matches your hardware and copy it as `config.ini`
 
 ---
 
-## Usage
+## GUI Launcher
+
+`replay2videoGUI.exe` is a standalone GUI — no Python or other runtime required.
+
+- Browse for your `.yrpX` replay file, set an output path and workdir
+- Load a quality preset with one click (codec, CRF, resolution, FPS all filled in)
+- Advanced settings (codec, CRF slider, tune, hardware acceleration) in a collapsible panel
+- Live frame counter during encoding, log output, and an "Open folder" button on completion
+- Dry run mode (10 frames + PNG) for a quick render check
+
+Settings are saved to `config.ini` automatically after each encode.
+
+---
+
+## Usage (CLI)
 
 ### Minimal
 
@@ -236,6 +251,17 @@ build_windows.bat
 ```
 
 `build_windows.bat` clones EDOPro with submodules, downloads FFmpeg dev libs, applies all patches, and compiles. Output: `edopro\bin\x64\release\replay2video.exe`. Copy `ffmpeg-dev\bin\*.dll` next to the exe once after building.
+
+### Building the GUI launcher
+
+Requires Python 3.11 (3.14+ does not have a `pythonnet` wheel).
+
+```bat
+cd gui
+build_launcher.bat
+```
+
+Produces `dist\replay2videoGUI.exe` (standalone, ~25 MB, no Python required for end users). Then run `deploy_package.bat` to assemble the full distribution in `dist\`.
 
 ---
 

@@ -1,1 +1,13 @@
-diff --git a/gframe/premake5.lua b/gframe/premake5.luaindex cd86eb33..e9124a75 100644--- a/gframe/premake5.lua+++ b/gframe/premake5.lua@@ -276,7 +276,7 @@ end  if not _OPTIONS["no-core"] then 	project "ygopro"-		targetname "ygopro"+		targetname(_OPTIONS["with-replay2video"] and "replay2video" or "ygopro") 		if _OPTIONS["prebuilt-core"] then 			libdirs { _OPTIONS["prebuilt-core"] } 		end
+diff --git a/gframe/premake5.lua b/gframe/premake5.lua
+index cd86eb33..e9124a75 100644
+--- a/gframe/premake5.lua
++++ b/gframe/premake5.lua
+@@ -276,7 +276,7 @@ end
+ 
+ if not _OPTIONS["no-core"] then
+ 	project "ygopro"
+-		targetname "ygopro"
++		targetname(_OPTIONS["with-replay2video"] and "replay2video" or "ygopro")
+ 		if _OPTIONS["prebuilt-core"] then
+ 			libdirs { _OPTIONS["prebuilt-core"] }
+ 		end

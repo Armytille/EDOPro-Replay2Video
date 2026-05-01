@@ -1,0 +1,1557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>replay2video</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════════
+   DESIGN TOKENS
+══════════════════════════════════════════════ */
+:root {
+  --bg0:        #080810;
+  --bg1:        #0e0e18;
+  --bg2:        #13131e;
+  --bg3:        #1a1a28;
+  --bg4:        #222232;
+  --bg5:        #2c2c40;
+
+  --line:       rgba(255,255,255,0.05);
+  --line-hi:    rgba(255,255,255,0.10);
+  --line-focus: rgba(232,168,32,0.45);
+
+  --amber:      #e8a820;
+  --amber-hi:   #ffcb50;
+  --amber-dim:  #a87318;
+  --amber-glow: rgba(232,168,32,0.18);
+  --amber-soft: rgba(232,168,32,0.07);
+
+  --green:      #3ecf7e;
+  --red:        #e05c5c;
+  --blue:       #5a9cf5;
+
+  --text:       #e0dbd0;
+  --text-2:     #8a8698;
+  --text-3:     #44415a;
+
+  --r:          6px;
+  --r2:         10px;
+  --r3:         14px;
+
+  --font-ui:    'Outfit', sans-serif;
+  --font-mono:  'JetBrains Mono', monospace;
+}
+
+/* ══════════════════════════════════════════════
+   RESET
+══════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+button { cursor: pointer; }
+input, select, button { font-family: var(--font-ui); }
+
+body {
+  background: var(--bg0);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle noise */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  pointer-events: none; z-index: 9999; opacity: 0.5;
+}
+
+/* ══════════════════════════════════════════════
+   APP SHELL — 3-column layout
+══════════════════════════════════════════════ */
+.app {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-rows: 48px 1fr;
+  height: 100vh;
+  min-width: 580px;
+}
+
+/* ══════════════════════════════════════════════
+   TITLEBAR
+══════════════════════════════════════════════ */
+.titlebar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 10px;
+  background: var(--bg1);
+  border-bottom: 1px solid var(--line);
+  position: relative;
+  z-index: 10;
+}
+.titlebar::after {
+  content: '';
+  position: absolute; bottom: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--amber-dim) 35%, var(--amber-dim) 65%, transparent);
+  opacity: 0.4;
+}
+
+.tb-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tb-logo-icon {
+  width: 24px; height: 24px;
+  background: var(--amber);
+  border-radius: 5px;
+  display: grid; place-items: center;
+  flex-shrink: 0;
+}
+.tb-logo-icon svg { width: 12px; height: 12px; fill: var(--bg0); }
+
+.tb-name {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--text);
+  text-transform: uppercase;
+}
+.tb-pipe {
+  width: 1px; height: 13px;
+  background: var(--line-hi); margin: 0 2px;
+}
+.tb-sub {
+  font-size: 11px; font-weight: 400;
+  color: var(--text-3); letter-spacing: 0.03em;
+}
+.tb-ver {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-3);
+  background: var(--bg3);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 2px 7px;
+  letter-spacing: 0.03em;
+}
+
+/* ══════════════════════════════════════════════
+   LEFT SIDEBAR — file setup + encode action
+══════════════════════════════════════════════ */
+.sidebar {
+  background: var(--bg1);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg4) transparent;
+}
+.sidebar-scroll::-webkit-scrollbar { width: 3px; }
+.sidebar-scroll::-webkit-scrollbar-thumb { background: var(--bg4); }
+
+/* Section header */
+.sec-hd {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--text-3);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  padding-left: 2px;
+}
+
+/* ── Drop zone (replay file) ── */
+.drop-zone {
+  border: 1.5px dashed var(--bg5);
+  border-radius: var(--r2);
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  position: relative;
+  background: var(--bg2);
+}
+.drop-zone:hover, .drop-zone.has-file {
+  border-color: var(--amber-dim);
+  background: var(--amber-soft);
+}
+.drop-zone.drag-active {
+  border-color: var(--amber);
+  background: rgba(232,168,32,0.1);
+}
+.drop-icon {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  background: var(--bg4);
+  display: grid; place-items: center;
+  transition: background 0.2s;
+}
+.drop-zone:hover .drop-icon, .drop-zone.has-file .drop-icon {
+  background: var(--amber-glow);
+}
+.drop-icon svg { width: 16px; height: 16px; fill: var(--text-3); transition: fill 0.2s; }
+.drop-zone:hover .drop-icon svg, .drop-zone.has-file .drop-icon svg { fill: var(--amber); }
+
+.drop-label {
+  font-size: 11px; font-weight: 600;
+  color: var(--text-2);
+  text-align: center;
+}
+.drop-hint { font-size: 10px; color: var(--text-3); text-align: center; }
+.drop-filename {
+  display: none;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--amber);
+  background: rgba(232,168,32,0.08);
+  border: 1px solid rgba(232,168,32,0.2);
+  border-radius: 4px;
+  padding: 3px 8px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.drop-zone.has-file .drop-label { display: none; }
+.drop-zone.has-file .drop-hint { display: none; }
+.drop-zone.has-file .drop-filename { display: block; }
+
+/* ── File path rows ── */
+.path-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.path-label {
+  font-size: 10px; font-weight: 600;
+  color: var(--text-3);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.path-input-wrap {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+.path-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg0);
+  border: 1px solid var(--line-hi);
+  border-radius: var(--r);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 5px 8px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.path-input:focus {
+  border-color: var(--line-focus);
+  box-shadow: 0 0 0 2px var(--amber-soft);
+}
+.path-input::placeholder { color: var(--text-3); }
+
+.btn-browse {
+  flex-shrink: 0;
+  background: var(--bg3);
+  border: 1px solid var(--line-hi);
+  border-radius: var(--r);
+  color: var(--text-3);
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  display: flex; align-items: center; gap: 4px;
+}
+.btn-browse svg { width: 10px; height: 10px; }
+.btn-browse:hover { color: var(--amber); border-color: var(--amber-dim); background: var(--bg4); }
+.btn-browse:active { transform: translateY(1px); }
+
+/* ── Sidebar footer: dry-run + encode ── */
+.sidebar-foot {
+  padding: 10px 12px 13px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ck-wrap {
+  display: flex; align-items: center; gap: 7px;
+  cursor: pointer; user-select: none;
+}
+.ck-wrap input { display: none; }
+.ck-box {
+  width: 14px; height: 14px;
+  border: 1px solid var(--line-hi);
+  border-radius: 3px;
+  background: var(--bg0);
+  display: grid; place-items: center;
+  flex-shrink: 0;
+  color: transparent;
+  transition: background 0.12s, border-color 0.12s;
+  font-size: 9px;
+}
+.ck-wrap input:checked ~ .ck-box {
+  background: var(--amber); border-color: var(--amber); color: var(--bg0);
+}
+.ck-wrap input:checked ~ .ck-box::after { content: '✓'; }
+.ck-label { font-size: 11.5px; font-weight: 500; color: var(--text-2); }
+
+/* Encode button */
+.btn-encode {
+  width: 100%;
+  position: relative; overflow: hidden;
+  background: var(--amber);
+  border: none;
+  border-radius: var(--r2);
+  color: var(--bg0);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 11px 0;
+  transition: box-shadow 0.25s, transform 0.1s, opacity 0.2s;
+  box-shadow: 0 2px 0 rgba(0,0,0,0.4), 0 0 0 0 var(--amber-glow);
+}
+.btn-encode::before {
+  content: '';
+  position: absolute; top: 0; left: -100%;
+  width: 60%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.28), transparent);
+  transition: left 0.45s;
+}
+.btn-encode:hover {
+  box-shadow: 0 4px 0 rgba(0,0,0,0.4), 0 0 28px var(--amber-glow);
+  transform: translateY(-1px);
+}
+.btn-encode:hover::before { left: 160%; }
+.btn-encode:active { transform: translateY(1px); box-shadow: 0 1px 0 rgba(0,0,0,0.4); }
+.btn-encode:disabled { opacity: 0.38; cursor: not-allowed; transform: none; box-shadow: 0 2px 0 rgba(0,0,0,0.4); }
+.btn-encode:disabled::before { display: none; }
+
+.btn-cancel {
+  width: 100%;
+  display: none;
+  background: transparent;
+  border: 1px solid rgba(224,92,92,0.35);
+  border-radius: var(--r);
+  color: var(--red);
+  font-size: 11.5px; font-weight: 600;
+  padding: 7px 0;
+  letter-spacing: 0.04em;
+  transition: background 0.12s, border-color 0.12s;
+}
+.btn-cancel:hover { background: rgba(224,92,92,0.07); border-color: var(--red); }
+
+/* ══════════════════════════════════════════════
+   MAIN PANEL — quality settings + log
+══════════════════════════════════════════════ */
+.main {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg0);
+}
+
+/* Tab bar */
+.tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg1);
+  flex-shrink: 0;
+}
+.tab {
+  padding: 10px 16px 9px;
+  font-size: 11px; font-weight: 600;
+  color: var(--text-3);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+  user-select: none;
+  margin-bottom: -1px;
+  white-space: nowrap;
+}
+.tab:hover { color: var(--text-2); }
+.tab.active { color: var(--amber); border-bottom-color: var(--amber); }
+
+/* Tab content */
+.tab-panels { flex: 1; overflow-y: auto; position: relative; min-height: 0; scrollbar-width: thin; scrollbar-color: var(--bg4) transparent; }
+.tab-panels::-webkit-scrollbar { width: 4px; }
+.tab-panels::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
+.tab-panel {
+  padding: 16px;
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+}
+.tab-panel.active { display: flex; }
+
+/* ── Settings groups ── */
+.grp {
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: var(--r2);
+  overflow: hidden;
+}
+.grp-hd {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--line);
+}
+.grp-hd-icon {
+  width: 20px; height: 20px;
+  border-radius: 5px;
+  background: var(--bg4);
+  display: grid; place-items: center;
+}
+.grp-hd-icon svg { width: 11px; height: 11px; fill: none; stroke: var(--text-3); stroke-width: 1.5; }
+.grp-title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: var(--text-2); text-transform: uppercase; }
+.grp-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+
+/* ── Field rows ── */
+.frow {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+}
+.frow-label {
+  font-size: 11px; font-weight: 600;
+  color: var(--text-2);
+  text-align: right;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+.frow-sub {
+  font-size: 9.5px; color: var(--text-3);
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  padding-left: 100px;
+  min-height: 12px;
+}
+
+.finput {
+  background: var(--bg0);
+  border: 1px solid var(--line-hi);
+  border-radius: var(--r);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 5px 9px;
+  outline: none;
+  width: 100%;
+  min-width: 0;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.finput:focus {
+  border-color: var(--line-focus);
+  box-shadow: 0 0 0 2px var(--amber-soft);
+}
+.finput::placeholder { color: var(--text-3); }
+
+select.finput {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2344415a'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  padding-right: 26px;
+}
+
+/* 2-col grid for paired fields */
+.fgrid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* ── Slider ── */
+.slider-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 40px;
+  align-items: center;
+  gap: 10px;
+}
+input[type=range] {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 3px;
+  background: var(--bg4);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 0 3px var(--bg0), 0 0 10px rgba(232,168,32,0.4);
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+input[type=range]:hover::-webkit-slider-thumb {
+  transform: scale(1.15);
+  box-shadow: 0 0 0 3px var(--bg0), 0 0 16px rgba(232,168,32,0.55);
+}
+.sval {
+  font-family: var(--font-mono);
+  font-size: 11px; font-weight: 500;
+  color: var(--amber);
+  text-align: center;
+  background: var(--bg0);
+  border: 1px solid var(--line-hi);
+  border-radius: var(--r);
+  padding: 3px 4px;
+}
+
+/* ── Toggle group (radio buttons) ── */
+.toggle-grp {
+  display: flex;
+  border: 1px solid var(--line-hi);
+  border-radius: var(--r);
+  overflow: hidden;
+  width: fit-content;
+}
+.toggle-grp input { display: none; }
+.toggle-grp label {
+  padding: 4px 14px;
+  font-size: 11px; font-weight: 600;
+  color: var(--text-2);
+  background: var(--bg0);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  user-select: none;
+  letter-spacing: 0.02em;
+}
+.toggle-grp input:checked + label {
+  background: var(--amber); color: var(--bg0);
+}
+
+/* ── Preset card ── */
+.preset-card {
+  display: none;
+  background: var(--bg0);
+  border: 1px solid var(--line-hi);
+  border-radius: var(--r);
+  padding: 10px 12px;
+  gap: 8px;
+  flex-direction: column;
+  animation: fadeIn 0.18s ease;
+}
+.preset-card.on { display: flex; }
+
+.preset-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.preset-card-name {
+  font-size: 12px; font-weight: 700;
+  color: var(--amber);
+  letter-spacing: 0.03em;
+}
+.preset-card-badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+.badge-cpu  { background: rgba(90,156,245,0.12); color: var(--blue);  border: 1px solid rgba(90,156,245,0.25); }
+.badge-gpu  { background: rgba(62,207,126,0.10); color: var(--green); border: 1px solid rgba(62,207,126,0.22); }
+
+.preset-card-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.preset-pill {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-3);
+  background: var(--bg3);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 2px 7px;
+}
+.preset-pill strong { color: var(--text-2); font-weight: 600; }
+
+/* ── Custom resolution ── */
+.res-custom {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding-left: 100px;
+}
+.res-custom.on { display: flex; }
+.res-custom span { color: var(--text-3); font-size: 13px; }
+.res-mini {
+  width: 68px;
+  background: var(--bg0);
+  border: 1px solid var(--line-hi);
+  border-radius: var(--r);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 7px;
+  outline: none;
+  text-align: center;
+  transition: border-color 0.15s;
+}
+.res-mini:focus { border-color: var(--line-focus); }
+
+/* ══════════════════════════════════════════════
+   LOG / PROGRESS PANEL (bottom of main)
+══════════════════════════════════════════════ */
+.log-zone {
+  flex-shrink: 0;
+  border-top: 1px solid var(--line);
+  background: var(--bg1);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Progress bar */
+.prog-bar-wrap {
+  height: 3px;
+  background: var(--bg3);
+  overflow: hidden;
+  position: relative;
+}
+.prog-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--amber-dim), var(--amber), var(--amber-hi));
+  background-size: 200% 100%;
+  width: 0%;
+  transition: width 0.5s ease;
+}
+.prog-bar.indeterminate {
+  width: 35% !important;
+  animation: progSlide 1.6s ease-in-out infinite;
+  background-size: 200% 100%;
+  animation: progSlide 1.6s ease-in-out infinite, shimmer 1.2s linear infinite;
+}
+@keyframes progSlide {
+  0%   { transform: translateX(-150%); }
+  100% { transform: translateX(380%); }
+}
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Status bar row */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  min-height: 32px;
+}
+.status-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--text-3);
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+.status-dot.encoding { background: var(--amber); animation: pulse 1.2s ease-in-out infinite; }
+.status-dot.ok       { background: var(--green); }
+.status-dot.err      { background: var(--red); }
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+
+.status-text {
+  font-size: 11px; font-weight: 500;
+  color: var(--text-2);
+  flex: 1;
+}
+.status-text.encoding { color: var(--amber); }
+.status-text.ok       { color: var(--green); }
+.status-text.err      { color: var(--red); }
+
+.status-frames {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+.btn-open-folder {
+  background: transparent;
+  border: 1px solid rgba(62,207,126,0.35);
+  border-radius: 4px;
+  color: var(--green);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  padding: 3px 9px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+.btn-open-folder:hover { background: rgba(62,207,126,0.08); border-color: var(--green); }
+
+/* Log output */
+.log {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-3);
+  padding: 6px 14px 10px;
+  height: 62px;
+  overflow-y: auto;
+  line-height: 1.65;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg4) transparent;
+  border-top: 1px solid var(--line);
+}
+.log::-webkit-scrollbar { width: 3px; }
+.log::-webkit-scrollbar-thumb { background: var(--bg4); }
+.log .l { display: block; }
+.log .l-ok   { color: var(--green); }
+.log .l-err  { color: var(--red); }
+.log .l-warn { color: var(--amber-dim); }
+
+/* ══════════════════════════════════════════════
+   FULL SCREEN DRAG OVERLAY
+══════════════════════════════════════════════ */
+.drag-overlay {
+  display: none;
+  position: fixed; inset: 0; z-index: 10000;
+  background: rgba(8,8,16,0.92);
+  border: 2px solid var(--amber-dim);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  pointer-events: none;
+}
+.drag-overlay.on { display: flex; }
+.drag-overlay-icon {
+  width: 56px; height: 56px;
+  border-radius: 14px;
+  background: var(--amber-glow);
+  border: 2px solid var(--amber-dim);
+  display: grid; place-items: center;
+}
+.drag-overlay-icon svg { width: 28px; height: 28px; fill: var(--amber); }
+.drag-overlay-text {
+  font-size: 20px; font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--amber);
+}
+.drag-overlay-hint { font-size: 12px; color: var(--text-3); }
+
+/* ══════════════════════════════════════════════
+   LOAD-IN ANIMATION
+══════════════════════════════════════════════ */
+.anim-in {
+  opacity: 0;
+  transform: translateY(6px);
+  animation: fadeIn 0.3s ease forwards;
+}
+.anim-in:nth-child(1) { animation-delay: 0.03s; }
+.anim-in:nth-child(2) { animation-delay: 0.08s; }
+.anim-in:nth-child(3) { animation-delay: 0.13s; }
+.anim-in:nth-child(4) { animation-delay: 0.18s; }
+@keyframes fadeIn { to { opacity: 1; transform: translateY(0); } }
+
+/* Sidebar load */
+.sidebar-scroll .path-row,
+.sidebar-scroll .drop-zone {
+  opacity: 0;
+  animation: fadeIn 0.3s ease forwards;
+}
+.sidebar-scroll .drop-zone      { animation-delay: 0.05s; }
+.sidebar-scroll .path-row:nth-of-type(1) { animation-delay: 0.1s; }
+.sidebar-scroll .path-row:nth-of-type(2) { animation-delay: 0.15s; }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ══ TITLEBAR ══════════════════════════════════════════ -->
+  <header class="titlebar">
+    <div class="tb-logo">
+      <div class="tb-logo-icon">
+        <svg viewBox="0 0 16 16"><path d="M2 3h12v2l-5 4v4H7V9L2 5V3z"/></svg>
+      </div>
+      <span class="tb-name">Replay2Video</span>
+    </div>
+    <div class="tb-pipe"></div>
+    <span class="tb-sub">EDOPro replay encoder</span>
+    <span class="tb-ver" id="appVersion">v1.0.2</span>
+  </header>
+
+  <!-- ══ SIDEBAR ═══════════════════════════════════════════ -->
+  <aside class="sidebar">
+    <div class="sidebar-scroll" id="dropZone">
+
+      <!-- Drop zone for replay -->
+      <div class="sec-hd">Replay</div>
+      <div class="drop-zone" id="dropZoneInner">
+        <div class="drop-icon">
+          <svg viewBox="0 0 16 16"><path d="M3 2h6l4 4v8H3V2zm6 0v4h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6 9l2 2 2-2M8 11V7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+        </div>
+        <span class="drop-label">Drop .yrpX replay or click</span>
+        <span class="drop-hint">EDOPro replay file</span>
+        <span class="drop-filename" id="dropFilename">—</span>
+      </div>
+
+      <!-- Hidden replay path input (stays in sync with drop) -->
+      <input style="display:none" id="iReplay" type="text">
+
+      <div style="height:4px"></div>
+      <div class="sec-hd">Output</div>
+
+      <div class="path-row">
+        <div class="path-label">Video file</div>
+        <div class="path-input-wrap">
+          <input class="path-input" id="iOutput" type="text" placeholder="output.mp4">
+          <button class="btn-browse" id="btnBrowseOutput" title="Save as…">
+            <svg viewBox="0 0 10 10" fill="currentColor"><path d="M1 1h8v8H1V1zm2 2v4l3-2-3-2z"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="path-row">
+        <div class="path-label">Workdir</div>
+        <div class="path-input-wrap">
+          <input class="path-input" id="iWorkdir" type="text" placeholder="D:\ProjectIgnis">
+          <button class="btn-browse" id="btnBrowseWorkdir" title="Browse folder…">
+            <svg viewBox="0 0 10 10" fill="currentColor"><path d="M0 2h3l1 1.5h6V9H0V2z"/></svg>
+          </button>
+        </div>
+      </div>
+
+    </div><!-- /sidebar-scroll -->
+
+    <div class="sidebar-foot">
+      <label class="ck-wrap">
+        <input type="checkbox" id="chkDryRun">
+        <div class="ck-box"></div>
+        <span class="ck-label">Dry run — 10 frames only</span>
+      </label>
+      <button class="btn-encode" id="btnEncode" onclick="startEncode()">▶ Encode</button>
+      <button class="btn-cancel" id="btnCancel" onclick="cancelEncode()">✕ Cancel</button>
+    </div>
+  </aside>
+
+  <!-- ══ MAIN PANEL ═════════════════════════════════════════ -->
+  <main class="main">
+
+    <!-- Tab bar -->
+    <div class="tabs">
+      <div class="tab active" data-tab="quality" onclick="switchTab('quality')">Quality</div>
+      <div class="tab" data-tab="advanced" onclick="switchTab('advanced')">Advanced</div>
+    </div>
+
+    <!-- Tab panels -->
+    <div class="tab-panels">
+
+      <!-- ── QUALITY TAB ── -->
+      <div class="tab-panel active" id="tab-quality">
+
+        <!-- Preset -->
+        <div class="grp anim-in">
+          <div class="grp-hd">
+            <div class="grp-hd-icon">
+              <svg viewBox="0 0 14 14"><path d="M7 1l1.5 4h4L9 7.5l1.5 4L7 9l-3.5 2.5L5 7.5 1.5 5h4z"/></svg>
+            </div>
+            <span class="grp-title">Preset</span>
+          </div>
+          <div class="grp-body">
+            <div class="frow">
+              <span class="frow-label">Preset</span>
+              <select class="finput" id="selPreset" onchange="applyPreset(this.value)">
+                <option value="">— Custom —</option>
+              </select>
+            </div>
+            <!-- Preset detail card — shown when a preset is selected -->
+            <div class="preset-card" id="presetCard">
+              <div class="preset-card-top">
+                <span class="preset-card-name" id="pcName"></span>
+                <span class="preset-card-badge" id="pcBadge"></span>
+              </div>
+              <div class="preset-card-pills" id="pcPills"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Video output -->
+        <div class="grp anim-in">
+          <div class="grp-hd">
+            <div class="grp-hd-icon">
+              <svg viewBox="0 0 14 14"><rect x="1" y="3" width="12" height="8" rx="1"/><path d="M10 7L5 4.5v5z" fill="currentColor" stroke="none"/></svg>
+            </div>
+            <span class="grp-title">Video</span>
+          </div>
+          <div class="grp-body">
+
+            <div class="frow">
+              <span class="frow-label">Resolution</span>
+              <select class="finput" id="selRes" onchange="onResChange()">
+                <option value="1920x1080">1920 × 1080 — Full HD</option>
+                <option value="1280x720">1280 × 720 — HD</option>
+                <option value="854x480">854 × 480 — SD</option>
+                <option value="custom">Custom…</option>
+              </select>
+            </div>
+            <div class="res-custom" id="resCustom">
+              <input class="res-mini" id="resW" type="number" value="1920" min="640" max="7680" step="2">
+              <span>×</span>
+              <input class="res-mini" id="resH" type="number" value="1080" min="480" max="4320" step="2">
+              <span style="font-size:10px;color:var(--text-3);margin-left:2px">px</span>
+            </div>
+
+            <div class="fgrid2">
+              <div class="frow">
+                <span class="frow-label">FPS</span>
+                <input class="finput" id="iFps" type="number" value="60" min="1" max="240">
+              </div>
+              <div class="frow" style="grid-template-columns: 28px 1fr">
+                <span class="frow-label" style="text-align:left">POV</span>
+                <div class="toggle-grp">
+                  <input type="radio" name="pov" id="pov0" value="0" checked>
+                  <label for="pov0">P1</label>
+                  <input type="radio" name="pov" id="pov1" value="1">
+                  <label for="pov1">P2</label>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div><!-- /tab-quality -->
+
+      <!-- ── ADVANCED TAB ── -->
+      <div class="tab-panel" id="tab-advanced">
+
+        <!-- Encoder (moved here — preset covers the common case) -->
+        <div class="grp anim-in" id="grpEncoder">
+          <div class="grp-hd">
+            <div class="grp-hd-icon">
+              <svg viewBox="0 0 14 14"><rect x="1" y="4" width="12" height="6" rx="1"/><path d="M4 7h6M7 5v4" stroke-linecap="round"/></svg>
+            </div>
+            <span class="grp-title">Encoder</span>
+          </div>
+          <div class="grp-body">
+
+            <div class="frow">
+              <span class="frow-label">Codec</span>
+              <select class="finput" id="selCodec" onchange="onCodecChange()">
+                <option value="libx264">libx264 — H.264 CPU</option>
+                <option value="libx265">libx265 — H.265 CPU</option>
+                <option value="libsvtav1">libsvtav1 — AV1 CPU</option>
+                <option value="h264_nvenc">h264_nvenc — H.264 NVIDIA</option>
+                <option value="hevc_nvenc">hevc_nvenc — H.265 NVIDIA</option>
+                <option value="av1_nvenc">av1_nvenc — AV1 NVIDIA (RTX 40+)</option>
+              </select>
+            </div>
+            <div class="frow-sub" id="codecNote"></div>
+
+            <div class="frow">
+              <span class="frow-label">Preset</span>
+              <select class="finput" id="selEncPreset"></select>
+            </div>
+
+            <div class="slider-row">
+              <span class="frow-label" title="0 = lossless · 51 = worst">CRF</span>
+              <input type="range" id="slCrf" min="0" max="51" value="23"
+                oninput="document.getElementById('vCrf').textContent=this.value">
+              <span class="sval" id="vCrf">23</span>
+            </div>
+
+            <!-- Film grain — AV1 only -->
+            <div class="slider-row" id="fgRow" style="display:none">
+              <span class="frow-label" title="SVT-AV1 film grain synthesis">Grain</span>
+              <input type="range" id="slGrain" min="0" max="50" value="0"
+                oninput="document.getElementById('vGrain').textContent=this.value">
+              <span class="sval" id="vGrain">0</span>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Fine-tuning -->
+        <div class="grp anim-in">
+          <div class="grp-hd">
+            <div class="grp-hd-icon">
+              <svg viewBox="0 0 14 14"><circle cx="4" cy="4" r="1.5"/><circle cx="10" cy="7" r="1.5"/><circle cx="5" cy="10" r="1.5"/><path d="M1 4h1.5M5.5 4H13M7 7h1.5M11.5 7H13M1 10h2.5M6.5 10H13" stroke-linecap="round"/></svg>
+            </div>
+            <span class="grp-title">Fine-tuning</span>
+          </div>
+          <div class="grp-body">
+
+            <div class="frow">
+              <span class="frow-label" title="Leave 0 for CRF mode">Bitrate</span>
+              <input class="finput" id="iBitrate" type="number" placeholder="0 = CRF" min="0" max="200000">
+            </div>
+
+            <div class="frow">
+              <span class="frow-label">Tune</span>
+              <select class="finput" id="selTune"></select>
+            </div>
+
+            <div class="frow">
+              <span class="frow-label">Scaling</span>
+              <select class="finput" id="selScale">
+                <option value="bilinear">bilinear — fast</option>
+                <option value="lanczos">lanczos — quality</option>
+              </select>
+            </div>
+
+            <div class="fgrid2">
+              <div class="frow">
+                <span class="frow-label" title="1.0 = normal replay speed">Speed×</span>
+                <input class="finput" id="iSpeed" type="number" value="1.0" min="0.1" max="10" step="0.1">
+              </div>
+              <div class="frow" style="grid-template-columns: 55px 1fr">
+                <span class="frow-label" title="Background margin 0–0.45">Margin</span>
+                <input class="finput" id="iMargin" type="number" value="0.10" min="0" max="0.45" step="0.01">
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Simulation -->
+        <div class="grp anim-in">
+          <div class="grp-hd">
+            <div class="grp-hd-icon">
+              <svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="5"/><path d="M7 4v3l2 1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <span class="grp-title">Simulation</span>
+          </div>
+          <div class="grp-body">
+            <div class="frow">
+              <span class="frow-label" title="0 = same as output FPS">Sim FPS</span>
+              <input class="finput" id="iSimFps" type="number" value="0" min="0" max="240">
+            </div>
+          </div>
+        </div>
+
+        <!-- Filters & hardware -->
+        <div class="grp anim-in">
+          <div class="grp-hd">
+            <div class="grp-hd-icon">
+              <svg viewBox="0 0 14 14"><path d="M1 3h12L8 8v4l-2-1V8L1 3z"/></svg>
+            </div>
+            <span class="grp-title">Filters &amp; Hardware</span>
+          </div>
+          <div class="grp-body">
+
+            <div class="frow">
+              <span class="frow-label" title="FFmpeg video filter string">VF Filter</span>
+              <input class="finput" id="iVf" type="text" placeholder="e.g. libplacebo=upscaler=ewa_lanczos">
+            </div>
+
+            <div class="fgrid2">
+              <div class="frow">
+                <span class="frow-label">HW Accel</span>
+                <select class="finput" id="selHwaccel">
+                  <option value="">— none —</option>
+                  <option value="vulkan">vulkan</option>
+                  <option value="dxva2">dxva2</option>
+                  <option value="d3d11va">d3d11va</option>
+                </select>
+              </div>
+              <div class="frow" style="grid-template-columns: 48px 1fr">
+                <span class="frow-label">Device</span>
+                <input class="finput" id="iHwDev" type="text" placeholder="0">
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div><!-- /tab-advanced -->
+
+    </div><!-- /tab-panels -->
+
+    <!-- ── LOG ZONE ── -->
+    <div class="log-zone">
+      <div class="prog-bar-wrap">
+        <div class="prog-bar" id="progBar"></div>
+      </div>
+      <div class="status-bar">
+        <div class="status-dot" id="statusDot"></div>
+        <span class="status-text" id="statusText">Ready</span>
+        <span class="status-frames" id="statusFrames"></span>
+        <button class="btn-open-folder" id="btnOpenFolder" style="display:none" onclick="openFolder()">Open folder</button>
+      </div>
+      <div class="log" id="logEl"></div>
+    </div>
+
+  </main>
+</div><!-- /app -->
+
+<!-- Full-screen drag overlay -->
+<div class="drag-overlay" id="dragOverlay">
+  <div class="drag-overlay-icon">
+    <svg viewBox="0 0 32 32"><path d="M4 6h12l4 4H28v16H4V6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M16 22v-8M12 18l4-4 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+  </div>
+  <div class="drag-overlay-text">Drop .yrpX replay</div>
+  <div class="drag-overlay-hint">EDOPro replay file</div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════
+//  CODEC DATA
+// ════════════════════════════════════════════════
+const CODEC_PRESETS = {
+  libx264:    ['veryslow','slower','slow','medium','fast','faster','veryfast','superfast','ultrafast'],
+  libx265:    ['veryslow','slower','slow','medium','fast','faster','veryfast','superfast','ultrafast'],
+  libsvtav1:  ['0','1','2','3','4','5','6','7','8','9','10','11','12'],
+  h264_nvenc: ['p7','p6','p5','p4','p3','p2','p1'],
+  hevc_nvenc: ['p7','p6','p5','p4','p3','p2','p1'],
+  av1_nvenc:  ['p7','p6','p5','p4','p3','p2','p1'],
+};
+const CODEC_DEF = {
+  libx264:'veryfast', libx265:'veryfast', libsvtav1:'6',
+  h264_nvenc:'p7', hevc_nvenc:'p7', av1_nvenc:'p7',
+};
+const CODEC_TUNES = {
+  libx264:    ['— none —','film','animation','grain','stillimage','fastdecode','zerolatency'],
+  libx265:    ['— none —','grain','animation','zerolatency','fastdecode'],
+  libsvtav1:  ['— none —'],
+  h264_nvenc: ['— none —','hq','ll','ull','lossless'],
+  hevc_nvenc: ['— none —','hq','ll','ull','lossless'],
+  av1_nvenc:  ['— none —'],
+};
+const CODEC_NOTES = {
+  libx264:    'CPU · H.264 · universal compatibility',
+  libx265:    'CPU · H.265 · ~40% smaller than H.264',
+  libsvtav1:  'CPU · AV1 · best quality/size ratio (slower)',
+  h264_nvenc: 'NVIDIA GPU · H.264 · p1 fastest → p7 best quality',
+  hevc_nvenc: 'NVIDIA GPU · H.265 · p1 fastest → p7 best quality',
+  av1_nvenc:  'NVIDIA GPU · AV1 · requires RTX 40xx+',
+};
+
+// ════════════════════════════════════════════════
+//  STATE
+// ════════════════════════════════════════════════
+let isEncoding = false;
+let encSrc = null;
+let lastOutput = '';
+let allPresets = {};
+let cfg = {};  // last loaded config — used for initial_dir
+
+// ════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', async () => {
+  onCodecChange();
+  await loadPresets();
+  await loadConfig();
+  setupDragDrop();
+});
+
+// Tier ordering: max first
+const TIER_ORDER = ['max', 'high', 'medium', 'low'];
+function tierRank(name) {
+  const tier = TIER_ORDER.find(t => name.endsWith('_' + t));
+  return tier ? TIER_ORDER.indexOf(tier) : 99;
+}
+
+async function loadPresets() {
+  try {
+    const r = await fetch('/api/presets');
+    const d = await r.json();
+    allPresets = d.presets || {};
+    const sel = $('selPreset');
+    while (sel.options.length > 1) sel.remove(1);
+
+    const GROUPS = [
+      { key: 'gpu_hevc_nvenc_', label: 'GPU · H.265 NVENC' },
+      { key: 'gpu_h264_nvenc_', label: 'GPU · H.264 NVENC' },
+      { key: 'gpu_av1_nvenc_',  label: 'GPU · AV1 NVENC' },
+      { key: 'cpu_av1_svt_',    label: 'CPU · AV1 / SVT' },
+      { key: 'cpu_h265_',       label: 'CPU · H.265' },
+      { key: 'cpu_h264_',       label: 'CPU · H.264' },
+    ];
+    for (const grp of GROUPS) {
+      const names = Object.keys(allPresets)
+        .filter(n => n.startsWith(grp.key))
+        .sort((a, b) => tierRank(a) - tierRank(b));
+      if (!names.length) continue;
+      const og = document.createElement('optgroup');
+      og.label = grp.label;
+      for (const name of names) og.appendChild(new Option(fmtPreset(name), name));
+      sel.appendChild(og);
+    }
+    const ungrouped = Object.keys(allPresets)
+      .filter(n => !GROUPS.some(g => n.startsWith(g.key)));
+    for (const name of ungrouped) sel.appendChild(new Option(fmtPreset(name), name));
+  } catch(e) { log('Could not load presets.', 'warn'); }
+}
+
+async function loadConfig() {
+  try {
+    const r = await fetch('/api/config');
+    cfg = await r.json();
+    if (cfg.workdir)     $('iWorkdir').value = cfg.workdir;
+    if (cfg.fps)         $('iFps').value = cfg.fps;
+    if (cfg.codec)     { $('selCodec').value = cfg.codec; onCodecChange(); }
+    if (cfg.preset)      $('selEncPreset').value = cfg.preset;
+    if (cfg.crf !== undefined) { $('slCrf').value = cfg.crf; $('vCrf').textContent = cfg.crf; }
+    if (cfg.scale_filter) $('selScale').value = cfg.scale_filter;
+    if (cfg.speed)       $('iSpeed').value = cfg.speed;
+    if (cfg.margin)      $('iMargin').value = cfg.margin;
+    if (cfg.film_grain)  { $('slGrain').value = cfg.film_grain; $('vGrain').textContent = cfg.film_grain; }
+    if (cfg.hwaccel)     $('selHwaccel').value = cfg.hwaccel;
+    if (cfg.resolution) {
+      const known = ['1920x1080','1280x720','854x480'];
+      if (known.includes(cfg.resolution)) $('selRes').value = cfg.resolution;
+      else {
+        $('selRes').value = 'custom';
+        const [w,h] = cfg.resolution.split('x');
+        $('resW').value = w; $('resH').value = h;
+        $('resCustom').classList.add('on');
+      }
+    }
+  } catch(e) {}
+}
+
+// ════════════════════════════════════════════════
+//  TABS
+// ════════════════════════════════════════════════
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${name}`));
+}
+
+// ════════════════════════════════════════════════
+//  BROWSE — pywebview JS API
+//  Pass initial_dir from saved config so dialogs open in the right folder.
+//  The Api methods are dispatched to the GUI main thread by pywebview —
+//  do NOT call these from onclick attributes, only from addEventListener.
+// ════════════════════════════════════════════════
+async function browseReplay() {
+  const path = await callApi('browse_replay', cfg.last_replay_dir || cfg.workdir || '');
+  if (path) setReplay(path);
+}
+async function browseOutput() {
+  const initDir = cfg.last_output_dir || (lastOutput ? lastOutput.replace(/[^/\\]+$/, '') : '') || cfg.workdir || '';
+  const path = await callApi('browse_output', initDir);
+  if (path) { $('iOutput').value = path; cfg.last_output_dir = path.replace(/[^/\\]+$/, ''); }
+}
+async function browseWorkdir() {
+  const path = await callApi('browse_dir', cfg.workdir || '');
+  if (path) { $('iWorkdir').value = path; cfg.workdir = path; }
+}
+async function openFolder() {
+  if (lastOutput) await callApi('open_folder', lastOutput);
+}
+
+function callApi(method, ...args) {
+  if (window.pywebview && window.pywebview.api && window.pywebview.api[method])
+    return window.pywebview.api[method](...args);
+  return Promise.resolve('');
+}
+
+function setReplay(path) {
+  $('iReplay').value = path;
+  const fname = path.split(/[\\/]/).pop();
+  $('dropFilename').textContent = fname;
+  $('dropZoneInner').classList.add('has-file');
+  cfg.last_replay_dir = path.replace(/[^/\\]+$/, '').replace(/[/\\]$/, '');
+  suggestOutput(path);
+}
+
+function suggestOutput(replayPath) {
+  if ($('iOutput').value) return; // don't overwrite an existing output path
+  const mp4 = replayPath.replace(/\.yrp[Xx]$/i, '.mp4');
+  if (mp4 !== replayPath) {
+    $('iOutput').value = mp4;
+    cfg.last_output_dir = mp4.replace(/[^/\\]+$/, '').replace(/[/\\]$/, '');
+  }
+}
+
+// ════════════════════════════════════════════════
+//  CODEC / PRESET
+// ════════════════════════════════════════════════
+function onCodecChange() {
+  const codec = $('selCodec').value;
+  const presets = CODEC_PRESETS[codec] || [];
+  const def = CODEC_DEF[codec] || presets[0] || '';
+
+  const sel = $('selEncPreset');
+  sel.innerHTML = '';
+  for (const p of presets) sel.appendChild(new Option(p, p, p === def, p === def));
+
+  const tuneSel = $('selTune');
+  tuneSel.innerHTML = '';
+  for (const t of (CODEC_TUNES[codec] || ['— none —']))
+    tuneSel.appendChild(new Option(t, t === '— none —' ? '' : t));
+
+  $('codecNote').textContent = CODEC_NOTES[codec] || '';
+  $('fgRow').style.display = codec === 'libsvtav1' ? 'grid' : 'none';
+}
+
+function applyPreset(name) {
+  const card = $('presetCard');
+  const encoderGrp = $('grpEncoder');
+
+  if (!name || !allPresets[name]) {
+    card.classList.remove('on');
+    if (encoderGrp) encoderGrp.style.opacity = '';
+    return;
+  }
+
+  const c = allPresets[name];
+  if (c.codec)  { $('selCodec').value = c.codec; onCodecChange(); }
+  if (c.preset)   $('selEncPreset').value = c.preset;
+  if (c.crf !== undefined)   { $('slCrf').value = c.crf; $('vCrf').textContent = c.crf; }
+  if (c.fps)      $('iFps').value = c.fps;
+  if (c.scale_filter) $('selScale').value = c.scale_filter;
+  if (c.film_grain !== undefined) { $('slGrain').value = c.film_grain; $('vGrain').textContent = c.film_grain; }
+  if (c.margin !== undefined) $('iMargin').value = c.margin;
+  if (c.resolution) {
+    const known = ['1920x1080','1280x720','854x480'];
+    if (known.includes(c.resolution)) { $('selRes').value = c.resolution; $('resCustom').classList.remove('on'); }
+    else {
+      $('selRes').value = 'custom';
+      const [w,h] = c.resolution.split('x');
+      $('resW').value = w; $('resH').value = h;
+      $('resCustom').classList.add('on');
+    }
+  }
+
+  // Populate preset card
+  const isGpu = name.startsWith('gpu_');
+  $('pcName').textContent = fmtPreset(name);
+  $('pcBadge').textContent = isGpu ? 'GPU' : 'CPU';
+  $('pcBadge').className = 'preset-card-badge ' + (isGpu ? 'badge-gpu' : 'badge-cpu');
+
+  const pills = [];
+  if (c.codec)      pills.push(['Codec', c.codec]);
+  if (c.crf != null) pills.push(['CRF', c.crf]);
+  if (c.preset)     pills.push(['Preset', c.preset]);
+  if (c.resolution) pills.push(['Res', c.resolution]);
+  if (c.fps)        pills.push(['FPS', c.fps]);
+  if (c.scale_filter) pills.push(['Scale', c.scale_filter]);
+  if (c.hwaccel)    pills.push(['HW', c.hwaccel]);
+
+  $('pcPills').innerHTML = pills.map(([k, v]) =>
+    `<span class="preset-pill"><strong>${k}</strong> ${v}</span>`
+  ).join('');
+  card.classList.add('on');
+
+  // Dim encoder group in Advanced — preset already controls it
+  if (encoderGrp) encoderGrp.style.opacity = '0.45';
+}
+
+function onResChange() {
+  $('resCustom').classList.toggle('on', $('selRes').value === 'custom');
+}
+
+function getResolution() {
+  const v = $('selRes').value;
+  return v === 'custom' ? `${$('resW').value}x${$('resH').value}` : v;
+}
+
+// ════════════════════════════════════════════════
+//  DRAG & DROP + BUTTON WIRING
+//  All interactive elements wired here — no onclick attributes in HTML
+//  so there's no risk of double-firing the file dialog.
+// ════════════════════════════════════════════════
+function setupDragDrop() {
+  // ── File dialog buttons ──
+  $('dropZoneInner').addEventListener('click', () => browseReplay());
+  $('btnBrowseOutput').addEventListener('click', () => browseOutput());
+  $('btnBrowseWorkdir').addEventListener('click', () => browseWorkdir());
+
+  // ── Drag & drop ──
+  let dragDepth = 0;
+
+  document.body.addEventListener('dragenter', e => {
+    e.preventDefault();
+    dragDepth++;
+    $('dragOverlay').classList.add('on');
+  });
+  document.body.addEventListener('dragleave', () => {
+    dragDepth--;
+    if (dragDepth <= 0) { dragDepth = 0; $('dragOverlay').classList.remove('on'); }
+  });
+  document.body.addEventListener('dragover', e => e.preventDefault());
+  document.body.addEventListener('drop', async e => {
+    e.preventDefault();
+    dragDepth = 0;
+    $('dragOverlay').classList.remove('on');
+    const file = e.dataTransfer.files[0];
+    if (file && /\.yrp[Xx]$/i.test(file.name)) {
+      try {
+        const r = await fetch('/api/drop', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name: file.name}),
+        });
+        const d = await r.json();
+        if (d.path) setReplay(d.path);
+      } catch(_) {}
+    }
+  });
+}
+
+// ════════════════════════════════════════════════
+//  ENCODE
+// ════════════════════════════════════════════════
+async function startEncode() {
+  setStatus('', '');
+  $('btnOpenFolder').style.display = 'none';
+  const replay   = $('iReplay').value.trim();
+  const output   = $('iOutput').value.trim();
+  const workdir  = $('iWorkdir').value.trim();
+  if (!replay)  { setStatus('err', 'Select a replay file (.yrpX).'); return; }
+  if (!output)  { setStatus('err', 'Specify an output file (.mp4).'); return; }
+  if (!workdir) { setStatus('err', 'Specify the EDOPro workdir.'); return; }
+
+  const params = {
+    input: replay, output, workdir,
+    resolution:    getResolution(),
+    fps:           parseInt($('iFps').value) || 60,
+    sim_fps:       parseInt($('iSimFps').value) || 0,
+    pov_player:    parseInt(document.querySelector('input[name=pov]:checked').value),
+    codec:         $('selCodec').value,
+    preset:        $('selEncPreset').value,
+    crf:           parseInt($('slCrf').value),
+    bitrate:       parseInt($('iBitrate').value) || 0,
+    tune:          $('selTune').value,
+    scale_filter:  $('selScale').value,
+    speed:         parseFloat($('iSpeed').value) || 1.0,
+    margin:        parseFloat($('iMargin').value) || 0.10,
+    film_grain:    parseInt($('slGrain').value) || 0,
+    vf:            $('iVf').value.trim(),
+    hwaccel:       $('selHwaccel').value,
+    hwaccel_device: $('iHwDev').value.trim(),
+    dry_run:       $('chkDryRun').checked,
+  };
+  lastOutput = output;
+
+  try {
+    const r = await fetch('/api/encode', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(params),
+    });
+    const d = await r.json();
+    if (!d.ok) { setStatus('err', d.error || 'Failed to start.'); return; }
+  } catch(e) { setStatus('err', 'Cannot reach backend.'); return; }
+
+  setEncoding(true);
+  log('Starting encode…');
+
+  encSrc = new EventSource('/api/progress');
+  encSrc.addEventListener('frame', e => {
+    $('statusFrames').textContent = `${e.data} frames`;
+  });
+  encSrc.addEventListener('log', e => { log(e.data); });
+  encSrc.addEventListener('done', e => {
+    encSrc.close(); encSrc = null;
+    setEncoding(false);
+    const d = JSON.parse(e.data);
+    if (d.ok) {
+      setStatus('ok', params.dry_run ? 'Dry run complete — PNG saved.' : 'Encoding complete.');
+      $('progBar').style.width = '100%';
+      $('progBar').classList.remove('indeterminate');
+      if (!params.dry_run) $('btnOpenFolder').style.display = '';
+    } else {
+      setStatus('err', `Encoder exited with code ${d.rc}.`);
+    }
+  });
+  encSrc.onerror = () => {
+    if (encSrc) { encSrc.close(); encSrc = null; }
+    if (isEncoding) { setEncoding(false); setStatus('err', 'Lost connection to backend.'); }
+  };
+}
+
+async function cancelEncode() {
+  try { await fetch('/api/cancel', {method:'POST'}); } catch(e) {}
+  if (encSrc) { encSrc.close(); encSrc = null; }
+  setEncoding(false);
+  log('Cancelled.', 'warn');
+  setStatus('', 'Cancelled.');
+  $('progBar').classList.remove('indeterminate');
+  $('progBar').style.width = '0%';
+}
+
+// ════════════════════════════════════════════════
+//  UI HELPERS
+// ════════════════════════════════════════════════
+function setEncoding(on) {
+  isEncoding = on;
+  $('btnEncode').disabled = on;
+  $('btnEncode').style.display = on ? 'none' : '';
+  $('btnCancel').style.display = on ? '' : 'none';
+  if (on) {
+    $('progBar').classList.add('indeterminate');
+    $('progBar').style.width = '35%';
+    $('statusFrames').textContent = '';
+    setStatus('encoding', 'Encoding…');
+  }
+}
+
+function setStatus(type, msg) {
+  const dot  = $('statusDot');
+  const text = $('statusText');
+  dot.className  = 'status-dot'  + (type ? ' ' + type : '');
+  text.className = 'status-text' + (type ? ' ' + type : '');
+  text.textContent = msg || 'Ready';
+  if (!msg) $('statusFrames').textContent = '';
+}
+
+function log(msg, level = '') {
+  const el = $('logEl');
+  const s = document.createElement('span');
+  s.className = 'l' + (level ? ' l-' + level : '');
+  s.textContent = '› ' + msg;
+  if (el.innerHTML) el.appendChild(document.createTextNode('\n'));
+  el.appendChild(s);
+  el.scrollTop = el.scrollHeight;
+}
+
+function $(id) { return document.getElementById(id); }
+
+function fmtPreset(name) {
+  // Strip family prefix, keep only the quality tier (max/high/medium/low)
+  return name
+    .replace(/^(?:cpu|gpu)_(?:h264|h265|av1_svt|h264_nvenc|hevc_nvenc|av1_nvenc)_/, '')
+    .replace(/\.ini$/, '')       // remove any stray .ini suffix
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+</script>
+</body>
+</html>

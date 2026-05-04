@@ -41,6 +41,7 @@ Download the ZIP, extract anywhere. Use the GUI or the CLI.
 
 - Browse for your `.yrpX` replay file, set an output path and workdir
 - Load a quality preset with one click (codec, CRF, resolution, FPS all filled in)
+- Choose POV (Player 1 / Player 2) and camera mode (3D perspective / Top-down)
 - Advanced settings (codec, CRF slider, tune, hardware acceleration) in a collapsible panel
 - Live frame counter during encoding, log output, and an "Open folder" button on completion
 - Dry run mode (10 frames + PNG) for a quick render check
@@ -177,8 +178,9 @@ Copy any file from `presets/` as `config.ini`. Each preset is a ready-to-use con
 ### Camera
 | Flag | Description | Default |
 |------|-------------|---------|
+| `--topdown` | Bird's-eye orthographic view (shows full field from above) | *(off)* |
 | `--margin` | Background margin `0.0`–`0.45` | `0.10` |
-| `--cam-offset-y` | Camera vertical offset | `0.7` |
+| `--cam-offset-y` | Camera vertical offset (3D mode only) | `0.7` |
 
 ### Diagnostics
 | Flag | Description |
@@ -202,6 +204,7 @@ scale_filter=bilinear
 speed=1.0
 player=0
 margin=0.10
+# topdown_view=false
 # cam_offset_y=0.7
 # sim_fps=0
 # tune=film

@@ -30,7 +30,7 @@ EXE     = BASE_DIR / 'replay2video.exe'
 PRESETS = BASE_DIR / 'presets'
 CONFIG  = BASE_DIR / 'config.ini'
 
-VERSION = 'v1.0.2'
+VERSION = 'v1.0.4'
 
 # ── Shared encode state ───────────────────────────────────────────────────────
 _proc: subprocess.Popen | None = None

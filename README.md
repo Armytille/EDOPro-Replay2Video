@@ -7,7 +7,7 @@ Convert EDOPro `.yrpX` replay files into `.mp4` / `.mkv` videos using the actual
 
 ---
 
-<img width="728" height="714" alt="image" src="https://github.com/user-attachments/assets/3f88d926-3e30-463c-a386-e728db00585f" />
+<img width="721" height="709" alt="image" src="https://github.com/user-attachments/assets/a249dce2-2dd8-4cfd-9faa-7cd35e186966" />
 
 ---
 

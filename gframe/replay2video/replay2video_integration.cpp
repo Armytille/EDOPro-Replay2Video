@@ -122,6 +122,8 @@ bool RenderConfig::ParseArgs(int argc, wchar_t* argv[]) {
             next_int(pov_player);
         } else if (arg == L"--film-grain") {
             next_int(film_grain);
+        } else if (arg == L"--topdown") {
+            topdown_view = true;
         }
     }
     return true;
@@ -167,6 +169,7 @@ bool RenderConfig::LoadIni(const std::string& path) {
             else if (key == "cam_offset_y") cam_offset_y = std::stof(val);
             else if (key == "player") pov_player = std::stoi(val);
             else if (key == "film_grain") film_grain = std::stoi(val);
+            else if (key == "topdown_view") topdown_view = (val == "true" || val == "1");
         } catch (...) {
             // Ignore malformed values
         }

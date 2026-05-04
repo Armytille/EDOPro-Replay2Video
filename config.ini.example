@@ -49,6 +49,9 @@ crf=23
 # Adds synthetic grain matched to the source to improve compression of noisy content.
 # film_grain=0
 
+# Top-down view of the field (false = 3D perspective).
+# topdown_view=false
+
 # Scaling algorithm for resolution conversion.
 #   bilinear  - fast, soft edges
 #   lanczos   - slower, sharper quality

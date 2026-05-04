@@ -93,7 +93,7 @@ def write_config(params: dict):
         ('resolution', '1920x1080'), ('fps', 60),
         ('sim_fps', 0), ('codec', 'libx264'), ('preset', 'veryfast'),
         ('crf', 23), ('bitrate', 0), ('tune', ''), ('scale_filter', 'bilinear'),
-        ('speed', 1.0), ('margin', 0.10), ('film_grain', 0),
+        ('speed', 1.0), ('margin', 0.10), ('film_grain', 0), ('topdown_view', False),
         ('hwaccel', ''), ('hwaccel_device', ''),
     ]
     for k, default in keys:

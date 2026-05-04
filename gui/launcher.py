@@ -150,6 +150,8 @@ def build_args(params: dict) -> list:
         args += ['--film-grain', str(fg)]
 
     args += ['--player', str(int(params.get('pov_player') or 0))]
+    if params.get('topdown_view'):
+        args.append('--topdown')
     add('--vf',             'vf')
     add('--hwaccel',        'hwaccel')
     add('--hwaccel-device', 'hwaccel_device')

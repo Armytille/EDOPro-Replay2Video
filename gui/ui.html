@@ -952,6 +952,16 @@ input[type=range]:hover::-webkit-slider-thumb {
               </div>
             </div>
 
+            <div class="frow">
+              <span class="frow-label">View</span>
+              <div class="toggle-grp">
+                <input type="radio" name="view" id="view3d" value="0" checked>
+                <label for="view3d">3D</label>
+                <input type="radio" name="view" id="viewtd" value="1">
+                <label for="viewtd">Top-down</label>
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -1232,6 +1242,7 @@ async function loadConfig() {
     if (cfg.speed)       $('iSpeed').value = cfg.speed;
     if (cfg.margin)      $('iMargin').value = cfg.margin;
     if (cfg.film_grain)  { $('slGrain').value = cfg.film_grain; $('vGrain').textContent = cfg.film_grain; }
+    if (cfg.topdown_view) { $('viewtd').checked = true; } else { $('view3d').checked = true; }
     if (cfg.hwaccel)     $('selHwaccel').value = cfg.hwaccel;
     if (cfg.resolution) {
       const known = ['1920x1080','1280x720','854x480'];
@@ -1445,6 +1456,7 @@ async function startEncode() {
     fps:           parseInt($('iFps').value) || 60,
     sim_fps:       parseInt($('iSimFps').value) || 0,
     pov_player:    parseInt(document.querySelector('input[name=pov]:checked').value),
+    topdown_view:  document.querySelector('input[name=view]:checked').value === '1',
     codec:         $('selCodec').value,
     preset:        $('selEncPreset').value,
     crf:           parseInt($('slCrf').value),

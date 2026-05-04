@@ -1,0 +1,14 @@
+diff --git a/gframe/client_field.cpp b/gframe/client_field.cpp
+index e775f9e5..4cb15b28 100644
+--- a/gframe/client_field.cpp
++++ b/gframe/client_field.cpp
+@@ -908,7 +908,8 @@ void ClientField::GetCardDrawCoordinates(ClientCard* pcard, irr::core::vector3df
+ 		};
+ 		auto SetYCoord = [&] {
+ 			if(gGameConfig->topdown_view) {
+-				static constexpr auto base_y = 2.5f;
++				// 3.5 clears the outermost mzone edge (Y≈2.0) with comfortable spacing.
++				static constexpr auto base_y = 3.5f;
+ 				if(controler == 0)
+ 					t->Y = base_y;
+ 				else

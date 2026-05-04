@@ -1,5 +1,5 @@
 diff --git a/gframe/drawing.cpp b/gframe/drawing.cpp
-index 1e78f8ae..a459c55c 100644
+index 1e78f8ae..7d98619a 100644
 --- a/gframe/drawing.cpp
 +++ b/gframe/drawing.cpp
 @@ -531,30 +531,105 @@ void Game::DrawMisc() {
@@ -152,3 +152,44 @@ index 1e78f8ae..a459c55c 100644
  #undef SKCOLOR
  
  	ClientCard* pcard;
+@@ -656,7 +740,39 @@ void Game::DrawStatus(ClientCard* pcard) {
+ 		return collisionmanager->getScreenCoordinatesFrom3DPosition(pos3d);
+ 	};
+ 	int x1, y1, x2, y2;
+-	if (pcard->controler == 0) {
++#ifdef WITH_REPLAY2VIDEO
++	const bool topdown = replay2video::g_batch.active && replay2video::g_batch.config.topdown_view;
++#else
++	constexpr bool topdown = false;
++#endif
++	if(topdown) {
++		// Topdown ortho: camera at (4,15,0.1), looks along -Y, up=(0,0,1).
++		// getScreenCoordinatesFrom3DPosition only responds to X (screen-right) in this
++		// projection — Z (screen-up) is ignored by Irrlicht's collision manager in ortho mode.
++		// We compute pixel offsets manually:
++		//   px_per_world = W / (2 * half_w)   where half_w = 8.0 (from UpdateAspectRatio)
++		// Card half-height in world units = 0.70 (standard card aspect in field units).
++		// ATK/DEF anchor: card center + card_half_h downward (positive screen Y).
++		// Level/rank anchor: card center - card_half_h upward (negative screen Y).
++		// Both controllers use the same screen directions (topdown is symmetric).
++		const float px_per_world = (float)window_size.Width / (2.0f * 8.0f);
++		const float atk_world = (pcard->controler == 1) ? 0.55f : 0.70f;
++		const float lvl_world = (pcard->controler == 1) ? 0.70f : 0.55f;
++		const int atk_offset_px = static_cast<int>(std::round(atk_world * px_per_world));
++		const int lvl_offset_px = static_cast<int>(std::round(lvl_world * px_per_world));
++		auto center = getcoords(pcard->curPos);
++		// ctrl0 (bottom): ATK/DEF below card (+Y), Level above (-Y).
++		// ctrl1 (top, rotated 180°): ATK/DEF above card (-Y), Level below (+Y).
++		const int sign = (pcard->controler == 0) ? -1 : 1;
++		x1 = center.X;
++		y1 = center.Y + sign * atk_offset_px; // ATK/DEF
++		// Level x-shift: in normal view 0.48 world units, but that's too large in topdown pixels.
++		// Use a small fixed pixel offset instead.
++		const float lvl_x_world = (pcard->controler == 1) ? 0.40f : 0.40f;
++		const int level_x_shift = static_cast<int>(std::round(lvl_x_world * px_per_world));
++		x2 = center.X - level_x_shift;
++		y2 = center.Y - sign * lvl_offset_px; // Level/rank
++	} else if (pcard->controler == 0) {
+ 		auto coords = getcoords({ pcard->curPos.X, (0.39f + pcard->curPos.Y), pcard->curPos.Z });
+ 		x1 = coords.X;
+ 		y1 = coords.Y;

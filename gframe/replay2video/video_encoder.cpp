@@ -381,7 +381,7 @@ static int send_packet(AVCodecContext* codec_ctx, AVFormatContext* fmt_ctx,
     return 0;
 }
 
-bool VideoEncoder::SendFrameThroughFilter(AVFrame* bgra_frame) {
+bool VideoEncoder::SendFrameThroughFilter(AVFrame* bgra_frame, int64_t pts_override) {
     AVFrame* src_frame = bgra_frame;
 
     // GPU path: filtergraph expects yuv420p input. Convert BGRA→yuv420p via swscale first.
@@ -424,7 +424,15 @@ bool VideoEncoder::SendFrameThroughFilter(AVFrame* bgra_frame) {
             std::cerr << "[replay2video] av_buffersink_get_frame failed: " << av_err(ret) << "\n";
             return false;
         }
-        filt_frame_->pts = frame_pts_++;
+        if (pts_override >= 0) {
+            filt_frame_->pts = pts_override;
+            frame_pts_ = pts_override + 1;
+        } else {
+            filt_frame_->pts = frame_pts_++;
+        }
+        // Snapshot for PadLastFrame() before send_packet, which may unref later.
+        if (last_encoded_frame_) av_frame_free(&last_encoded_frame_);
+        last_encoded_frame_ = av_frame_clone(filt_frame_);
         if (send_packet(codec_ctx_, fmt_ctx_, stream_, pkt_, filt_frame_) < 0) {
             av_frame_unref(filt_frame_);
             return false;
@@ -434,11 +442,11 @@ bool VideoEncoder::SendFrameThroughFilter(AVFrame* bgra_frame) {
     return true;
 }
 
-bool VideoEncoder::EncodeFrame(AVFrame* rgba_frame) {
+bool VideoEncoder::EncodeFrame(AVFrame* rgba_frame, int64_t pts_override) {
     if (!initialized_ || !rgba_frame) return false;
 
     if (filter_graph_) {
-        return SendFrameThroughFilter(rgba_frame);
+        return SendFrameThroughFilter(rgba_frame, pts_override);
     }
 
     // Plain swscale path (no --vf)
@@ -456,9 +464,29 @@ bool VideoEncoder::EncodeFrame(AVFrame* rgba_frame) {
 
     sws_scale(sws_ctx_, rgba_frame->data, rgba_frame->linesize, 0, src_h,
               yuv_frame_->data, yuv_frame_->linesize);
-    yuv_frame_->pts = frame_pts_++;
+    if (pts_override >= 0) {
+        yuv_frame_->pts = pts_override;
+        frame_pts_ = pts_override + 1;
+    } else {
+        yuv_frame_->pts = frame_pts_++;
+    }
+    // Snapshot for PadLastFrame() before send_packet — yuv_frame_ is reused.
+    if (last_encoded_frame_) av_frame_free(&last_encoded_frame_);
+    last_encoded_frame_ = av_frame_clone(yuv_frame_);
 
     return send_packet(codec_ctx_, fmt_ctx_, stream_, pkt_, yuv_frame_) == 0;
+}
+
+bool VideoEncoder::PadLastFrame(int64_t pts) {
+    if (!initialized_) return false;
+    // Re-send the cloned last frame at the requested pts. Works for both the
+    // plain-swscale path (last clone is the yuv420p) and the filtergraph path
+    // (last clone is the post-filter yuv420p), so deck-mode + --vf works too.
+    if (!last_encoded_frame_) return false;
+    if (pts < frame_pts_) return true;  // already past — nothing to pad
+    last_encoded_frame_->pts = pts;
+    frame_pts_ = pts + 1;
+    return send_packet(codec_ctx_, fmt_ctx_, stream_, pkt_, last_encoded_frame_) == 0;
 }
 
 void VideoEncoder::Finalize() {
@@ -491,6 +519,7 @@ void VideoEncoder::Finalize() {
     buffersink_ctx_ = nullptr;
     av_frame_free(&filt_frame_);
     av_frame_free(&yuv_pre_frame_);
+    av_frame_free(&last_encoded_frame_);
     sws_freeContext(filt_sws_ctx_);
     filt_sws_ctx_ = nullptr;
     av_buffer_unref(&hw_device_ctx_);

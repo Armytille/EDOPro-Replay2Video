@@ -89,12 +89,13 @@ def read_config() -> dict:
 def write_config(params: dict):
     lines = ['# replay2video config — auto-saved by launcher\n']
     keys = [
-        ('workdir', ''), ('last_replay_dir', ''), ('last_output_dir', ''),
+        ('workdir', ''), ('last_replay_dir', ''), ('last_deck_dir', ''), ('last_output_dir', ''),
         ('resolution', '1920x1080'), ('fps', 60),
         ('sim_fps', 0), ('codec', 'libx264'), ('preset', 'veryfast'),
         ('crf', 23), ('bitrate', 0), ('tune', ''), ('scale_filter', 'bilinear'),
         ('speed', 1.0), ('margin', 0.10), ('film_grain', 0), ('topdown_view', False),
         ('hwaccel', ''), ('hwaccel_device', ''),
+        ('mode', 'replay'), ('card_duration_ms', 700),
     ]
     for k, default in keys:
         v = params.get(k, default)
@@ -113,6 +114,28 @@ def save_dir(key: str, path: str):
     write_config(cfg)
 
 
+# ── Deck (.ydk) helpers ───────────────────────────────────────────────────────
+def count_unique_cards(ydk_path: str) -> int:
+    """Count unique card codes across all sections of a .ydk file.
+
+    .ydk format: one decimal card code per line. Comment lines start with '#'
+    and section markers with '!' (e.g. '#main', '#extra', '!side'). Codes
+    are deduplicated across sections so each unique card maps to 1 video frame.
+    """
+    try:
+        codes = set()
+        with open(ydk_path, encoding='utf-8', errors='replace') as f:
+            for line in f:
+                s = line.strip()
+                if not s or s.startswith('#') or s.startswith('!'):
+                    continue
+                if s.isdigit():
+                    codes.add(s)
+        return len(codes)
+    except Exception:
+        return 0
+
+
 # ── CLI args builder ──────────────────────────────────────────────────────────
 def build_args(params: dict) -> list:
     args = [str(EXE)]
@@ -122,7 +145,14 @@ def build_args(params: dict) -> list:
         if v:
             args.extend([flag, str(v)])
 
-    args += ['--render-replay', params['input']]
+    mode = (params.get('mode') or 'replay').lower()
+    if mode == 'deck':
+        args += ['--render-deck', params['input']]
+        cd = int(params.get('card_duration_ms') or 700)
+        args += ['--card-duration-ms', str(cd)]
+    else:
+        args += ['--render-replay', params['input']]
+
     args += ['--output',        params['output']]
     args += ['--workdir',       params['workdir']]
     args += ['--resolution',    params['resolution']]
@@ -149,9 +179,12 @@ def build_args(params: dict) -> list:
     if fg > 0:
         args += ['--film-grain', str(fg)]
 
-    args += ['--player', str(int(params.get('pov_player') or 0))]
-    if params.get('topdown_view'):
-        args.append('--topdown')
+    # POV / topdown are replay-only concepts; skip in deck mode
+    if mode != 'deck':
+        args += ['--player', str(int(params.get('pov_player') or 0))]
+        if params.get('topdown_view'):
+            args.append('--topdown')
+
     add('--vf',             'vf')
     add('--hwaccel',        'hwaccel')
     add('--hwaccel-device', 'hwaccel_device')
@@ -214,6 +247,27 @@ class Api:
             if r:
                 chosen = r[0]
                 save_dir('last_replay_dir', str(Path(chosen).parent))
+                return chosen
+            return ''
+        except Exception:
+            return ''
+        finally:
+            _dialog_lock.release()
+
+    def browse_deck(self, initial_dir: str = ''):
+        if not _dialog_lock.acquire(blocking=False):
+            return ''
+        try:
+            import webview
+            d = self._valid_dir(initial_dir)
+            r = webview.windows[0].create_file_dialog(
+                webview.OPEN_DIALOG,
+                directory=d,
+                file_types=['EDOPro Deck (*.ydk)', 'All files (*.*)'],
+            )
+            if r:
+                chosen = r[0]
+                save_dir('last_deck_dir', str(Path(chosen).parent))
                 return chosen
             return ''
         except Exception:
@@ -290,6 +344,11 @@ class Handler(BaseHTTPRequestHandler):
             '/api/version':  lambda: self._json({'version': VERSION}),
             '/api/progress': self._sse_stream,
         }
+        if path == '/api/count-deck':
+            qs = parse_qs(p.query)
+            ydk = (qs.get('path') or [''])[0]
+            self._json({'count': count_unique_cards(ydk)})
+            return
         handler = routes.get(path)
         if handler:
             handler()
@@ -351,11 +410,14 @@ class Handler(BaseHTTPRequestHandler):
         if not name:
             self._json({'path': ''}); return
         cfg = read_config()
+        is_deck = name.lower().endswith('.ydk')
+        subdir = 'deck' if is_deck else 'replay'
+        last_key = 'last_deck_dir' if is_deck else 'last_replay_dir'
         candidates = [
             Path(name),
             BASE_DIR / name,
-            Path(cfg.get('last_replay_dir', '')) / name if cfg.get('last_replay_dir') else None,
-            Path(cfg.get('workdir', '')) / 'replay' / name if cfg.get('workdir') else None,
+            Path(cfg.get(last_key, '')) / name if cfg.get(last_key) else None,
+            Path(cfg.get('workdir', '')) / subdir / name if cfg.get('workdir') else None,
         ]
         for p in candidates:
             if p and p.exists():

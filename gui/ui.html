@@ -179,6 +179,33 @@ body::after {
   padding-left: 2px;
 }
 
+/* Mode toggle (Replay/Deck) — full-width version of .toggle-grp for the sidebar */
+.mode-toggle {
+  display: flex;
+  border: 1px solid var(--line-hi);
+  border-radius: var(--r);
+  overflow: hidden;
+  width: 100%;
+  margin-bottom: 10px;
+}
+.mode-toggle input { display: none; }
+.mode-toggle label {
+  flex: 1;
+  padding: 6px 0;
+  font-size: 11px; font-weight: 700;
+  color: var(--text-2);
+  background: var(--bg0);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  user-select: none;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+}
+.mode-toggle input:checked + label {
+  background: var(--amber); color: var(--bg0);
+}
+
 /* ── Drop zone (replay file) ── */
 .drop-zone {
   border: 1.5px dashed var(--bg5);
@@ -819,18 +846,27 @@ input[type=range]:hover::-webkit-slider-thumb {
   <aside class="sidebar">
     <div class="sidebar-scroll" id="dropZone">
 
-      <!-- Drop zone for replay -->
-      <div class="sec-hd">Replay</div>
+      <!-- Mode toggle: Replay vs Deck -->
+      <div class="sec-hd">Mode</div>
+      <div class="mode-toggle">
+        <input type="radio" name="mode" id="modeReplay" value="replay" checked>
+        <label for="modeReplay">Replay</label>
+        <input type="radio" name="mode" id="modeDeck" value="deck">
+        <label for="modeDeck">Deck</label>
+      </div>
+
+      <!-- Drop zone (label/hint adapt to mode) -->
+      <div class="sec-hd" id="dropSecHd">Replay</div>
       <div class="drop-zone" id="dropZoneInner">
         <div class="drop-icon">
           <svg viewBox="0 0 16 16"><path d="M3 2h6l4 4v8H3V2zm6 0v4h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6 9l2 2 2-2M8 11V7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
         </div>
-        <span class="drop-label">Drop .yrpX replay or click</span>
-        <span class="drop-hint">EDOPro replay file</span>
+        <span class="drop-label" id="dropLabel">Drop .yrpX replay or click</span>
+        <span class="drop-hint" id="dropHint">EDOPro replay file</span>
         <span class="drop-filename" id="dropFilename">—</span>
       </div>
 
-      <!-- Hidden replay path input (stays in sync with drop) -->
+      <!-- Hidden input file path (stays in sync with drop — used for both replay and deck) -->
       <input style="display:none" id="iReplay" type="text">
 
       <div style="height:4px"></div>
@@ -936,7 +972,7 @@ input[type=range]:hover::-webkit-slider-thumb {
               <span style="font-size:10px;color:var(--text-3);margin-left:2px">px</span>
             </div>
 
-            <div class="fgrid2">
+            <div class="fgrid2" id="fpsPovRow">
               <div class="frow">
                 <span class="frow-label">FPS</span>
                 <input class="finput" id="iFps" type="number" value="60" min="1" max="240">
@@ -952,7 +988,14 @@ input[type=range]:hover::-webkit-slider-thumb {
               </div>
             </div>
 
-            <div class="frow">
+            <!-- Deck-mode: FPS forced to 10, replaces the row above. -->
+            <div class="frow" id="cardDurRow" style="display:none">
+              <span class="frow-label" title="Time each card is shown (ms)">Card Dur</span>
+              <input class="finput" id="iCardDur" type="number" value="700" min="200" max="10000" step="100">
+            </div>
+            <div class="frow-sub" id="cardDurSub" style="display:none">FPS forced to 10 in deck mode</div>
+
+            <div class="frow" id="viewRow">
               <span class="frow-label">View</span>
               <div class="toggle-grp">
                 <input type="radio" name="view" id="view3d" value="0" checked>
@@ -1179,6 +1222,12 @@ let encSrc = null;
 let lastOutput = '';
 let allPresets = {};
 let cfg = {};  // last loaded config — used for initial_dir
+let currentMode = 'replay';         // 'replay' | 'deck'
+let totalSimFrames = 0;             // computed for deck mode progress bar; 0 = unknown
+
+// Deck mode: the binary always runs sim at 10 fps; encoded frames are deduped
+// to 1 per unique card. Used to estimate total sim frames for the progress bar.
+const DECK_SIM_FPS = 10;
 
 // ════════════════════════════════════════════════
 //  INIT
@@ -1188,6 +1237,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   await loadPresets();
   await loadConfig();
   setupDragDrop();
+  setupModeToggle();
+  // Restore mode from localStorage (overrides config.ini if both present)
+  const savedMode = localStorage.getItem('r2v_mode');
+  setMode(savedMode === 'deck' ? 'deck' : 'replay');
 });
 
 // Tier ordering: max first
@@ -1244,6 +1297,7 @@ async function loadConfig() {
     if (cfg.film_grain)  { $('slGrain').value = cfg.film_grain; $('vGrain').textContent = cfg.film_grain; }
     if (cfg.topdown_view) { $('viewtd').checked = true; } else { $('view3d').checked = true; }
     if (cfg.hwaccel)     $('selHwaccel').value = cfg.hwaccel;
+    if (cfg.card_duration_ms) $('iCardDur').value = cfg.card_duration_ms;
     if (cfg.resolution) {
       const known = ['1920x1080','1280x720','854x480'];
       if (known.includes(cfg.resolution)) $('selRes').value = cfg.resolution;
@@ -1272,8 +1326,13 @@ function switchTab(name) {
 //  do NOT call these from onclick attributes, only from addEventListener.
 // ════════════════════════════════════════════════
 async function browseReplay() {
-  const path = await callApi('browse_replay', cfg.last_replay_dir || cfg.workdir || '');
-  if (path) setReplay(path);
+  if (currentMode === 'deck') {
+    const path = await callApi('browse_deck', cfg.last_deck_dir || cfg.workdir || '');
+    if (path) setInputFile(path);
+  } else {
+    const path = await callApi('browse_replay', cfg.last_replay_dir || cfg.workdir || '');
+    if (path) setInputFile(path);
+  }
 }
 async function browseOutput() {
   const initDir = cfg.last_output_dir || (lastOutput ? lastOutput.replace(/[^/\\]+$/, '') : '') || cfg.workdir || '';
@@ -1294,21 +1353,82 @@ function callApi(method, ...args) {
   return Promise.resolve('');
 }
 
-function setReplay(path) {
+function setInputFile(path) {
   $('iReplay').value = path;
   const fname = path.split(/[\\/]/).pop();
   $('dropFilename').textContent = fname;
   $('dropZoneInner').classList.add('has-file');
-  cfg.last_replay_dir = path.replace(/[^/\\]+$/, '').replace(/[/\\]$/, '');
+  const dir = path.replace(/[^/\\]+$/, '').replace(/[/\\]$/, '');
+  if (currentMode === 'deck') {
+    cfg.last_deck_dir = dir;
+    refreshDeckCount(path);
+  } else {
+    cfg.last_replay_dir = dir;
+  }
   suggestOutput(path);
 }
 
-function suggestOutput(replayPath) {
+function suggestOutput(inputPath) {
   if ($('iOutput').value) return; // don't overwrite an existing output path
-  const mp4 = replayPath.replace(/\.yrp[Xx]$/i, '.mp4');
-  if (mp4 !== replayPath) {
+  const mp4 = inputPath.replace(/\.yrp[Xx]$/i, '.mp4').replace(/\.ydk$/i, '.mp4');
+  if (mp4 !== inputPath) {
     $('iOutput').value = mp4;
     cfg.last_output_dir = mp4.replace(/[^/\\]+$/, '').replace(/[/\\]$/, '');
+  }
+}
+
+async function refreshDeckCount(ydkPath) {
+  try {
+    const r = await fetch('/api/count-deck?path=' + encodeURIComponent(ydkPath));
+    const d = await r.json();
+    const count = parseInt(d.count) || 0;
+    if (count > 0) {
+      log(`Deck: ${count} unique cards`);
+    }
+  } catch(_) {}
+}
+
+// ════════════════════════════════════════════════
+//  MODE TOGGLE (Replay ↔ Deck)
+// ════════════════════════════════════════════════
+function setupModeToggle() {
+  document.querySelectorAll('input[name=mode]').forEach(el => {
+    el.addEventListener('change', () => setMode(el.value));
+  });
+}
+
+function setMode(mode) {
+  currentMode = mode === 'deck' ? 'deck' : 'replay';
+  const isDeck = currentMode === 'deck';
+
+  // Sync radio (handles localStorage restore)
+  const radio = $(isDeck ? 'modeDeck' : 'modeReplay');
+  if (radio && !radio.checked) radio.checked = true;
+  localStorage.setItem('r2v_mode', currentMode);
+
+  // Sidebar drop-zone label/hint
+  $('dropSecHd').textContent = isDeck ? 'Deck' : 'Replay';
+  $('dropLabel').textContent = isDeck ? 'Drop .ydk deck or click' : 'Drop .yrpX replay or click';
+  $('dropHint').textContent  = isDeck ? 'EDOPro deck file' : 'EDOPro replay file';
+  document.querySelector('.drag-overlay-text').textContent = isDeck ? 'Drop .ydk deck' : 'Drop .yrpX replay';
+  document.querySelector('.drag-overlay-hint').textContent = isDeck ? 'EDOPro deck file' : 'EDOPro replay file';
+
+  // Quality tab: swap FPS+POV row for Card Duration row; hide View toggle (replay-only)
+  $('fpsPovRow').style.display  = isDeck ? 'none' : '';
+  $('cardDurRow').style.display = isDeck ? '' : 'none';
+  $('cardDurSub').style.display = isDeck ? '' : 'none';
+  $('viewRow').style.display    = isDeck ? 'none' : '';
+
+  // Clear stale file + filename when switching modes (extensions don't match)
+  const cur = $('iReplay').value;
+  if (cur) {
+    const isYdk = /\.ydk$/i.test(cur);
+    if ((isDeck && !isYdk) || (!isDeck && isYdk)) {
+      $('iReplay').value = '';
+      $('dropFilename').textContent = '—';
+      $('dropZoneInner').classList.remove('has-file');
+      $('iOutput').value = '';
+    }
   }
 }
 
@@ -1351,6 +1471,13 @@ function applyPreset(name) {
   if (c.scale_filter) $('selScale').value = c.scale_filter;
   if (c.film_grain !== undefined) { $('slGrain').value = c.film_grain; $('vGrain').textContent = c.film_grain; }
   if (c.margin !== undefined) $('iMargin').value = c.margin;
+  if (c.vf !== undefined)        $('iVf').value = c.vf;
+  if (c.hwaccel !== undefined)   $('selHwaccel').value = c.hwaccel;
+  if (c.hwaccel_device !== undefined) $('iHwDev').value = c.hwaccel_device;
+  if (c.tune !== undefined)      $('selTune').value = c.tune;
+  if (c.bitrate !== undefined)   $('iBitrate').value = c.bitrate;
+  if (c.speed !== undefined)     $('iSpeed').value = c.speed;
+  if (c.sim_fps !== undefined)   $('iSimFps').value = c.sim_fps;
   if (c.resolution) {
     const known = ['1920x1080','1280x720','854x480'];
     if (known.includes(c.resolution)) { $('selRes').value = c.resolution; $('resCustom').classList.remove('on'); }
@@ -1424,16 +1551,21 @@ function setupDragDrop() {
     dragDepth = 0;
     $('dragOverlay').classList.remove('on');
     const file = e.dataTransfer.files[0];
-    if (file && /\.yrp[Xx]$/i.test(file.name)) {
-      try {
-        const r = await fetch('/api/drop', {
-          method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({name: file.name}),
-        });
-        const d = await r.json();
-        if (d.path) setReplay(d.path);
-      } catch(_) {}
-    }
+    if (!file) return;
+    const isYdk = /\.ydk$/i.test(file.name);
+    const isYrp = /\.yrp[Xx]$/i.test(file.name);
+    if (!isYdk && !isYrp) return;
+    // Auto-switch mode to match the dropped file
+    if (isYdk && currentMode !== 'deck')      setMode('deck');
+    if (isYrp && currentMode !== 'replay')    setMode('replay');
+    try {
+      const r = await fetch('/api/drop', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: file.name}),
+      });
+      const d = await r.json();
+      if (d.path) setInputFile(d.path);
+    } catch(_) {}
   });
 }
 
@@ -1443,18 +1575,42 @@ function setupDragDrop() {
 async function startEncode() {
   setStatus('', '');
   $('btnOpenFolder').style.display = 'none';
-  const replay   = $('iReplay').value.trim();
+  const input    = $('iReplay').value.trim();
   const output   = $('iOutput').value.trim();
   const workdir  = $('iWorkdir').value.trim();
-  if (!replay)  { setStatus('err', 'Select a replay file (.yrpX).'); return; }
+  const isDeck   = currentMode === 'deck';
+
+  if (!input)   { setStatus('err', isDeck ? 'Select a deck file (.ydk).' : 'Select a replay file (.yrpX).'); return; }
+  if (isDeck && !/\.ydk$/i.test(input))     { setStatus('err', 'Deck mode requires a .ydk file.'); return; }
+  if (!isDeck && !/\.yrp[Xx]?$/i.test(input)) { setStatus('err', 'Replay mode requires a .yrpX file.'); return; }
   if (!output)  { setStatus('err', 'Specify an output file (.mp4).'); return; }
   if (!workdir) { setStatus('err', 'Specify the EDOPro workdir.'); return; }
 
+  // Deck mode forces fps=10 (binary also forces this; we mirror it in args).
+  const cardDurMs = parseInt($('iCardDur').value) || 700;
+  const effectiveFps = isDeck ? DECK_SIM_FPS : (parseInt($('iFps').value) || 60);
+
+  // Estimate total sim frames for the progress bar (deck mode only).
+  totalSimFrames = 0;
+  if (isDeck) {
+    try {
+      const r = await fetch('/api/count-deck?path=' + encodeURIComponent(input));
+      const d = await r.json();
+      const nCards = parseInt(d.count) || 0;
+      if (nCards > 0) {
+        totalSimFrames = Math.ceil(nCards * cardDurMs * DECK_SIM_FPS / 1000);
+        log(`Deck: ${nCards} unique cards → ~${totalSimFrames} sim frames`);
+      }
+    } catch(_) {}
+  }
+
   const params = {
-    input: replay, output, workdir,
+    mode:          currentMode,
+    input, output, workdir,
     resolution:    getResolution(),
-    fps:           parseInt($('iFps').value) || 60,
+    fps:           effectiveFps,
     sim_fps:       parseInt($('iSimFps').value) || 0,
+    card_duration_ms: cardDurMs,
     pov_player:    parseInt(document.querySelector('input[name=pov]:checked').value),
     topdown_view:  document.querySelector('input[name=view]:checked').value === '1',
     codec:         $('selCodec').value,
@@ -1487,7 +1643,15 @@ async function startEncode() {
 
   encSrc = new EventSource('/api/progress');
   encSrc.addEventListener('frame', e => {
-    $('statusFrames').textContent = `${e.data} frames`;
+    const n = parseInt(e.data) || 0;
+    if (totalSimFrames > 0) {
+      const pct = Math.min(100, Math.round(n * 100 / totalSimFrames));
+      $('statusFrames').textContent = `${n} / ${totalSimFrames} frames (${pct}%)`;
+      $('progBar').classList.remove('indeterminate');
+      $('progBar').style.width = pct + '%';
+    } else {
+      $('statusFrames').textContent = `${n} frames`;
+    }
   });
   encSrc.addEventListener('log', e => { log(e.data); });
   encSrc.addEventListener('done', e => {

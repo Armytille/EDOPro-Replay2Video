@@ -1,8 +1,17 @@
 diff --git a/gframe/drawing.cpp b/gframe/drawing.cpp
-index 1e78f8ae..8ebe0b78 100644
+index 1e78f8ae..84e6fc37 100644
 --- a/gframe/drawing.cpp
 +++ b/gframe/drawing.cpp
-@@ -531,30 +531,105 @@ void Game::DrawMisc() {
+@@ -1,5 +1,8 @@
+ #include "game_config.h"
+ #include <irrlicht.h>
++#ifdef WITH_REPLAY2VIDEO
++#include <climits>
++#endif
+ #include "game.h"
+ #ifdef WITH_REPLAY2VIDEO
+ #include "replay2video/replay2video_integration.h"
+@@ -531,30 +534,105 @@ void Game::DrawMisc() {
  	//lp bar
  	const auto& self = dInfo.isTeam1 ? dInfo.selfnames : dInfo.opponames;
  	const auto& oppo = dInfo.isTeam1 ? dInfo.opponames : dInfo.selfnames;
@@ -116,7 +125,7 @@ index 1e78f8ae..8ebe0b78 100644
  			DRAWRECT(lpbar_pos, 2, &cliprect);
  		} else {
  			DRAWRECT(lpbar_pos, 2, nullptr);
-@@ -588,11 +663,15 @@ void Game::DrawMisc() {
+@@ -588,11 +666,15 @@ void Game::DrawMisc() {
  		driver->draw2DRectangleOutline(rectpos, skin::TIMEBAR_2_OUTLINE_VAL);
  	}
  
@@ -136,7 +145,7 @@ index 1e78f8ae..8ebe0b78 100644
  	{
  		int i = 0;
  		for (const auto& player : self) {
-@@ -617,9 +696,14 @@ void Game::DrawMisc() {
+@@ -617,9 +699,14 @@ void Game::DrawMisc() {
  	}
  	/*driver->draw2DRectangle(Resize(632, 10, 688, 30), 0x00000000, 0x00000000, 0xffffffff, 0xffffffff);
  	driver->draw2DRectangle(Resize(632, 30, 688, 50), 0xffffffff, 0xffffffff, 0x00000000, 0x00000000);*/
@@ -152,7 +161,7 @@ index 1e78f8ae..8ebe0b78 100644
  #undef SKCOLOR
  
  	ClientCard* pcard;
-@@ -656,7 +740,39 @@ void Game::DrawStatus(ClientCard* pcard) {
+@@ -656,7 +743,39 @@ void Game::DrawStatus(ClientCard* pcard) {
  		return collisionmanager->getScreenCoordinatesFrom3DPosition(pos3d);
  	};
  	int x1, y1, x2, y2;
@@ -193,3 +202,225 @@ index 1e78f8ae..8ebe0b78 100644
  		auto coords = getcoords({ pcard->curPos.X, (0.39f + pcard->curPos.Y), pcard->curPos.Z });
  		x1 = coords.X;
  		y1 = coords.Y;
+@@ -1264,6 +1383,12 @@ void Game::DrawDeckBd() {
+ 		return epro::to_wstring(deck.size());
+ 	};
+ 	const auto& current_deck = deckBuilder.GetCurrentDeck();
++#ifdef WITH_REPLAY2VIDEO
++	if(replay2video::g_batch.active && replay2video::g_batch.deck_mode) {
++		DrawDeckBdR2V();
++		return;
++	}
++#endif
+ 
+ 	//main deck
+ 	{
+@@ -1452,6 +1577,208 @@ void Game::DrawDeckBd() {
+ 	if(deckBuilder.is_draging)
+ 		DrawThumb(deckBuilder.dragging_pointer, irr::core::vector2di(deckBuilder.dragx - Scale(CARD_THUMB_WIDTH / 2), deckBuilder.dragy - Scale(CARD_THUMB_HEIGHT / 2)), deckBuilder.filterList, true);
+ }
++#ifdef WITH_REPLAY2VIDEO
++// Shared geometry: returns the logical-space scale factor used to grow the
++// native deck builder layout (487×493) into the freed area (717×632). Called
++// from both the renderer and the gframe.cpp startup so SetArtTextureSize can
++// size the cached ART texture to match the on-screen thumb dimensions.
++float Game::GetDeckBdR2VScale() {
++	const int native_body_w     = 487;
++	const int native_header_h   = 23;
++	const int native_main_body  = 276;
++	const int native_extra_body = 70;
++	const int native_side_body  = 70;
++	const int native_body_total = native_main_body + native_extra_body + native_side_body;
++	const int avail_w = 1022 - 305;   // 717
++	const int avail_h = 638 - 6;      // 632
++	const int gap     = 4;
++	const int fixed_y_overhead = 2 * gap + 3 * 3;
++	const float scale_x = (float)avail_w / (float)native_body_w;
++	const float scale_y = (float)(avail_h - fixed_y_overhead)
++	                    / (float)(3 * native_header_h + native_body_total);
++	return std::min(scale_x, scale_y);
++}
++// Deck export rendering. Differences vs DrawDeckBd():
++//   - extends the deck area into the freed right-hand search panel (rightmost x: 797 → 1020)
++//   - scales thumbnails up by R2V_DECK_THUMB_SCALE so cards are visually larger
++//   - highlights the current card (g_batch.deck_index_pos/seq) with a thick outline
++//   - omits the search-results column
++void Game::DrawDeckBdR2V() {
++	// Strategy: derive everything from the native deck-builder layout, then apply
++	// a uniform scale factor so cards keep their relative spacing while filling
++	// the freed real estate.
++	//
++	// Native (1024×640 logical):
++	//   - Main section:  x=310..797 (header), body 310..797 × 160..436  → 487×276
++	//                    Card grid:  start at (314,164), dx=436/(per_row-1), dy=68
++	//                    Card thumb: 44×64. ≤40 cards → per_row=10, then 11 if 41-44, etc.
++	//   - Extra section: body 310..797 × 463..533 → 487×70.
++	//                    dx = 436/9 (≤10 cards) else 436/(n-1). dy n/a (single row).
++	//   - Side section:  body 310..797 × 560..630 → 487×70 (same layout as extra).
++	//
++	// Deck export available area (no UI overlays):
++	//   - inner_w = 1018 - 309 - 8 = 709 (vs native 487+4*2-8 = 483) → x-scale 1.467
++	//   - vertical: we want sections to fill y=6..632 (height 626) instead of native
++	//     y=137..630 (height 493). y-scale = 626/493 = 1.270.
++	//   - Uniform scale = min(x-scale, y-scale) = 1.270 (height-limited).
++	const auto& current_deck = deckBuilder.GetCurrentDeck();
++
++	const int left = 305;
++	const int right = 1022;
++	const int top  = 6;
++	const int cur_pos = replay2video::g_batch.deck_index_pos;
++	const int cur_seq = replay2video::g_batch.deck_index_seq;
++
++	// Native widths and heights for the body rectangles (the only spec that matters
++	// for the card grid is the body, since headers are decorative).
++	const int native_main_body_h  = 276; // 436 - 160
++	const int native_extra_body_h = 70;  // 533 - 463
++	const int native_side_body_h  = 70;  // 630 - 560
++	const int native_body_w       = 487; // 797 - 310
++	const int native_header_h = 23;       // 160 - 137
++	// Inter-section gaps: native has 27 px (gap between section blocks), but in
++	// export mode we tighten them to a small fixed value so all three sections
++	// fit vertically in the available 632 px (otherwise the side ends up cut off).
++	const int gap_extra = 4;
++	const int gap_side  = 4;
++	// Vertical budget for the three section blocks (header + body each).
++	// avail_h = header×3 + body_main + body_extra + body_side + gap×2
++	// Body ratio comes from native: main=276, extra=70, side=70 → sum=416.
++	const int avail_w = right - left;  // 717
++	const float scale = GetDeckBdR2VScale();
++
++	const int header_h     = (int)(native_header_h * scale);
++	const int main_body_h  = (int)(native_main_body_h * scale);
++	const int extra_body_h = (int)(native_extra_body_h * scale);
++	const int side_body_h  = (int)(native_side_body_h * scale);
++
++	// Card thumb dimensions: scaled CARD_THUMB_WIDTH × CARD_THUMB_HEIGHT.
++	const int tw = (int)(CARD_THUMB_WIDTH * scale);
++	const int th = (int)(CARD_THUMB_HEIGHT * scale);
++	// Total scaled width corresponding to native 487 — also defines the section block
++	// width. Center it horizontally inside avail_w.
++	const int scaled_block_w = (int)(native_body_w * scale);
++	const int block_left = left + (avail_w - scaled_block_w) / 2;
++	const int block_right = block_left + scaled_block_w;
++	const int inner_l = block_left + 4;
++	const int inner_w = scaled_block_w - 8; // matches native: 314..794 inside 310..797 block
++
++	auto draw_section = [&](int top_y, int body_h, int section_pos,
++	                        const Deck::Vector& cards,
++	                        const wchar_t* label_str, const std::wstring& count_str,
++	                        int default_per_row) {
++		// Header strip.
++		DRAWRECT(MAIN_INFO, block_left, top_y, block_right, top_y + header_h);
++		DRAWOUTLINE(MAIN_INFO, block_left - 1, top_y - 1, block_right, top_y + header_h);
++		DrawShadowText(textFont, label_str,
++		               Resize(block_left + 4, top_y - 1, block_left + 99, top_y + header_h - 1),
++		               Resize(1, 1, 1, 1), 0xffffffff, 0xff000000, false, true);
++		DrawShadowText(numFont, count_str,
++		               Resize(block_left + 69, top_y - 1, block_left + 129, top_y + header_h - 1),
++		               Resize(1, 1, 1, 1), 0xffffffff, 0xff000000, false, true);
++		// Body strip.
++		const int body_top = top_y + header_h + 3;
++		DRAWRECT(MAIN, block_left, body_top, block_right, body_top + body_h);
++		DRAWOUTLINE(MAIN, block_left - 1, body_top - 1, block_right, body_top + body_h);
++
++		if(cards.empty()) return;
++
++		// Replicate the native per-row formula but in the scaled world.
++		// Native main: per_row = (size<=40) ? 10 : (size-41)/4 + 11
++		// Native extra/side: per_row = (size<=10) ? 10 : size
++		int per_row;
++		int rows = 1;
++		if(section_pos == 1) {
++			const int n = (int)cards.size();
++			// Mirror native's "spread to extra rows for >40 cards" rule, but cap
++			// at the number of rows the section body can actually fit (body_h /
++			// (th + 2 spacing)) so we never overflow into the extra deck below.
++			const int max_rows = std::max(1, (body_h - 4) / std::max(1, th + 2));
++			rows = (n <= 40) ? 4 : ((n - 41) / 4 + 5);
++			if (rows > max_rows) rows = max_rows;
++			per_row = (n + rows - 1) / rows;
++			if (per_row < default_per_row) per_row = default_per_row;
++		} else {
++			per_row = std::max(default_per_row, (int)cards.size());
++		}
++
++		const float dx = (per_row > 1) ? (float)(inner_w - tw) / (float)(per_row - 1) : 0.f;
++		// dy: native uses 68 between rows. If a many-row main wouldn't fit at the
++		// native 68*scale spacing, compress vertically to fit the body exactly.
++		float dy = 68.0f * scale;
++		if (rows > 1) {
++			const float dy_max = (float)(body_h - th) / (float)(rows - 1);
++			if (dy > dy_max) dy = dy_max;
++		}
++
++		// Cards are drawn first; the highlight is drawn after the loop so it sits
++		// on top of every neighbour (cards overlap in dense layouts where dx < tw).
++		// Cards are drawn left-to-right, so card i+1 is painted on top of card i's
++		// right side when they overlap — meaning the visible right edge of card i
++		// is the LEFT edge of card i+1. Clamp the highlight to that visible bound
++		// so it doesn't overdraw onto card i+1. Left side needs no clamp because
++		// card i is drawn on top of card i-1, so its left edge is fully visible.
++		irr::core::recti highlight_rect;
++		int neighbour_right_left_edge = INT_MAX;  // left edge of card i+1 (same row), in screen coords
++		bool has_highlight = false;
++		for(int i = 0; i < (int)cards.size(); ++i) {
++			const int col = i % per_row;
++			const int row = i / per_row;
++			// Round (not truncate) and pin width/height to tw/th so the on-screen
++			// rect always matches the cached scaled-texture dimensions — avoids a
++			// 1px blurry edge from sub-pixel GPU sampling.
++			const int x = (int)std::lround((float)inner_l + col * dx);
++			const int y = (int)std::lround((float)body_top + 4.0f + row * dy);
++			irr::core::recti rect = Resize(x, y, x + tw, y + th);
++			// Source: ART (1024px texture set via SetArtTextureSize). Render via
++			// draw2DImageFilterScaled — Irrlicht's high-quality cached software
++			// downscaler — instead of raw draw2DImage which uses point/bilinear
++			// GPU sampling and produces a mushy result at this scale ratio.
++			auto img = imageManager.GetTextureCard(cards[i]->code, imgType::ART, false, true);
++			if(img) {
++				irr::core::dimension2du sz = img->getOriginalSize();
++				imageManager.draw2DImageFilterScaled(img, rect,
++				                                    irr::core::recti(0, 0, sz.Width, sz.Height),
++				                                    nullptr, nullptr, true);
++			}
++			if(section_pos == cur_pos && i == cur_seq) {
++				highlight_rect = rect;
++				has_highlight = true;
++			}
++			if(section_pos == cur_pos && i == cur_seq + 1 && row == (cur_seq / per_row))
++				neighbour_right_left_edge = rect.UpperLeftCorner.X;
++		}
++		if(has_highlight) {
++			// Inflate by 2px in screen space, reusing the card's exact Resize() rect
++			// so the outline is pixel-aligned with the card edge (no sub-pixel drift).
++			irr::core::recti hl = highlight_rect;
++			hl.UpperLeftCorner.X  -= 2;
++			hl.UpperLeftCorner.Y  -= 2;
++			hl.LowerRightCorner.X += 2;
++			hl.LowerRightCorner.Y += 2;
++			if(hl.LowerRightCorner.X > neighbour_right_left_edge) hl.LowerRightCorner.X = neighbour_right_left_edge;
++			irr::core::recti hl2 = hl;
++			hl2.UpperLeftCorner.X  += 1; hl2.UpperLeftCorner.Y  += 1;
++			hl2.LowerRightCorner.X -= 1; hl2.LowerRightCorner.Y -= 1;
++			driver->draw2DRectangleOutline(hl,  0xffffff00);
++			driver->draw2DRectangleOutline(hl2, 0xffffff00);
++		}
++	};
++
++	int y = top;
++	draw_section(y, main_body_h, 1, current_deck.main,
++	             gDataManager->GetSysString(1330).data(),
++	             epro::to_wstring(current_deck.main.size()), 10);
++	y += header_h + 3 + main_body_h + gap_extra;
++	draw_section(y, extra_body_h, 2, current_deck.extra,
++	             gDataManager->GetSysString(1331).data(),
++	             epro::to_wstring(current_deck.extra.size()), 10);
++	y += header_h + 3 + extra_body_h + gap_side;
++	draw_section(y, side_body_h, 3, current_deck.side,
++	             gDataManager->GetSysString(1332).data(),
++	             epro::to_wstring(current_deck.side.size()), 10);
++}
++#endif // WITH_REPLAY2VIDEO
+ #undef DRAWRECT
+ #undef DECKCOLOR
+ #undef SKCOLOR

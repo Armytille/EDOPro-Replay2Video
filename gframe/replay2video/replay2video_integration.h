@@ -4,6 +4,7 @@
 #include <string>
 #include <atomic>
 #include <memory>
+#include <vector>
 
 #ifdef WITH_REPLAY2VIDEO
 
@@ -21,13 +22,16 @@ namespace replay2video {
 
 struct RenderConfig {
     std::string input_replay;
+    std::string input_deck;   // .ydk path for deck export mode
+    int card_duration_ms = 3000; // deck mode: time spent on each unique card
     std::string output_video;
     std::string workdir;
     int width = 1920;         // output video resolution
     int height = 1080;
     int render_width = 0;    // Irrlicht window size (0 = auto-detect from desktop, capped to output res)
     int render_height = 0;
-    int fps = 60;            // output video FPS
+    int fps = 0;             // 0 = not set; Normalize() picks 60 for replay, 5 for deck mode
+    int fps_cli = 0;         // set by CLI --fps / --render-fps; trumps ini and deck-mode default
     int sim_fps = 0;         // simulation FPS (0 = same as fps); each sim frame is duplicated fps/sim_fps times
     int crf = 23;
     std::string preset = "veryfast";
@@ -70,6 +74,19 @@ struct BatchState {
     int frame_time_ms = 16;
     int frames_per_sim = 1;  // output frames written per simulated frame (fps / sim_fps)
     uint64_t max_frames = 0; // 0 = unlimited
+    // Deck export mode: drives DeckBuilder rendering instead of replay playback.
+    bool deck_mode = false;
+    // Current highlighted card in the decklist. Updated by Integration::TickDeck().
+    // (deck_index_pos: 1=main, 2=extra, 3=side; deck_index_seq: index within that section)
+    int deck_index_pos = 0;
+    int deck_index_seq = -1;
+    uint32_t deck_current_code = 0;
+    // Deck mode warmup: render N frames without capturing, so async texture
+    // GPU upload completes before the first encoded frame.
+    int deck_warmup_frames = 0;
+    // Deck mode: signals RefreshCardInfoTextPositions() to push stInfo etc.
+    // below the (taller, wordwrappable) stName instead of overwriting at y=37.
+    bool deck_info_layout = false;
     RenderConfig config;
 
     void Start(const RenderConfig& cfg);
@@ -86,6 +103,21 @@ struct Integration {
     std::unique_ptr<VideoEncoder> encoder;
     std::unique_ptr<FrameCapture> capture;
 
+    // Deck export: unique-card traversal, built once on first TickDeck() call.
+    // Lives on the Integration (not in static locals) so a second export within
+    // the same process — possible via repeat BatchState::Start() — sees a clean
+    // slate. Cleared in Shutdown().
+    struct DeckSlot { int pos; int seq; uint32_t code; };
+    std::vector<DeckSlot> deck_sequence;
+    bool deck_sequence_built = false;
+    // Index of the card encoded most recently (-1 = none yet). Used by
+    // ProcessFrame() to skip already-encoded cards. Reset in Shutdown().
+    int deck_last_encoded_idx = -1;
+    // frames_per_card = card_duration_ms * fps / 1000. Cached at the moment
+    // the sequence is built so ProcessFrame can derive the pts deterministically
+    // (idx * frames_per_card) instead of sampling g_batch.frame_count.
+    int deck_frames_per_card = 0;
+
     bool Initialize();
     void SetupFBO(irr::video::IVideoDriver* driver);
     void Shutdown();
@@ -93,6 +125,12 @@ struct Integration {
     void EndFrame();
     bool ProcessFrame(irr::video::IVideoDriver* driver);
     bool IsFinished() const;
+    // Deck mode: advance the highlight cursor based on g_batch.frame_count.
+    // Returns true while there are still cards to show; false once the sequence is done.
+    bool TickDeck();
+    // Deck mode: current slot index (0-based) into deck_sequence, or -1 if no
+    // active card. Set by TickDeck(); read by ProcessFrame() to compute the pts.
+    int deck_current_idx = -1;
 };
 
 extern Integration g_integration;

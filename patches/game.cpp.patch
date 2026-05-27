@@ -1,5 +1,5 @@
 diff --git a/gframe/game.cpp b/gframe/game.cpp
-index 361b1c87..bbda379f 100644
+index 361b1c87..362d97df 100644
 --- a/gframe/game.cpp
 +++ b/gframe/game.cpp
 @@ -2006,6 +2006,35 @@ bool Game::MainLoop() {
@@ -85,16 +85,86 @@ index 361b1c87..bbda379f 100644
  	camera->setTarget(irr::core::vector3df(FIELD_X, 0, 0));
  	UpdateCameraPosition();
  
-@@ -2243,7 +2305,7 @@ bool Game::MainLoop() {
+@@ -2093,7 +2155,13 @@ bool Game::MainLoop() {
+ 			delta_time = replay2video::g_batch.frame_time_ms;
+ 			prev_time += delta_time;
+ 			cur_time = prev_time;
+-			replay2video::g_batch.AdvanceVirtualTime();
++			// Warmup frames (deck mode): keep virtual_time at 0 so TickDeck stays on
++			// the first card while GPU finishes uploading the pre-loaded textures.
++			if(replay2video::g_batch.deck_warmup_frames > 0) {
++				replay2video::g_batch.deck_warmup_frames--;
++			} else {
++				replay2video::g_batch.AdvanceVirtualTime();
++			}
+ 		} else
+ #endif
+ 		{
+@@ -2151,6 +2219,12 @@ bool Game::MainLoop() {
+ 		gMutex.lock();
+ #ifdef WITH_REPLAY2VIDEO
+ 		if(replay2video::g_batch.active && !replay2video::g_batch.replay_finished && dInfo.isInDuel) {
++			// Apply POV swap once, after MSG_START has set dInfo.isFirst correctly.
++			if(!replay2video::g_batch.replay_started && dInfo.isStarted) {
++				replay2video::g_batch.replay_started = true;
++				if(replay2video::g_batch.config.pov_player == 1)
++					dField.ReplaySwap();
++			}
+ 			// Only call StepBatch when no animation is pending (signalFrame==0).
+ 			// WaitFrameSignal sets signalFrame; MainLoop decrements it via delta_time.
+ 			if(signalFrame == 0) {
+@@ -2163,6 +2237,13 @@ bool Game::MainLoop() {
+ 				gMutex.lock();
+ 			}
+ 		}
++		// Deck export: advance the current-card cursor. When the unique-card
++		// traversal is exhausted, mark the batch finished so the loop exits.
++		if(replay2video::g_batch.active && replay2video::g_batch.deck_mode
++		   && !replay2video::g_batch.replay_finished) {
++			if(!replay2video::g_integration.TickDeck())
++				replay2video::g_batch.replay_finished = true;
++		}
+ #endif
+ 		if(dInfo.isInDuel) {
+ 			if(dInfo.isReplay)
+@@ -2243,7 +2324,8 @@ bool Game::MainLoop() {
  		DrawGUI();
  		DrawSpec();
  #ifdef WITH_REPLAY2VIDEO
 -		if(replay2video::g_batch.active) {
-+		if(replay2video::g_batch.active && !replay2video::g_batch.replay_finished) {
++		if(replay2video::g_batch.active && !replay2video::g_batch.replay_finished
++		   && replay2video::g_batch.deck_warmup_frames == 0) {
  			replay2video::g_integration.ProcessFrame(driver);
  			replay2video::g_integration.EndFrame();
  		}
-@@ -3324,6 +3386,30 @@ int Game::GetMasterRule(uint64_t param, uint32_t forbidden, int* truerule) {
+@@ -2934,6 +3016,9 @@ void Game::ShowCardInfo(uint32_t code, bool resize, imgType type) {
+ 		only_texture = only_texture || !resize;
+ 	}
+ 	int shouldrefresh = -1;
++	// Always async — wait=true has a bug where it sets preload_status to LOADING
++	// but never to LOADED, breaking subsequent calls for the same card. The
++	// deck-mode warmup window in MainLoop gives the async loader time to catch up.
+ 	auto img = imageManager.GetTextureCard(code, resize ? prevtype : type, false, true, &shouldrefresh);
+ 	cardimagetextureloading = false;
+ 	if(shouldrefresh == 2)
+@@ -3000,6 +3085,16 @@ void Game::RefreshCardInfoTextPositions() {
+ 	const int xLeft = Scale(15);
+ 	const int xRight = Scale(287 * window_scale.X);
+ 	int offset = Scale(37);
++#ifdef WITH_REPLAY2VIDEO
++	// Deck export: stName is at y=0..N with N = getTextHeight() + small margin
++	// (1.7× font + wordwrap may break long names onto a second line). Resize the
++	// stName rect to fit and anchor the rest of the info block below it.
++	if(replay2video::g_batch.deck_info_layout && stName) {
++		const int name_h = std::max(stName->getTextHeight(), (int)Scale(28));
++		stName->setRelativePosition(irr::core::recti(Scale(10), 0, (int)Scale(287 * window_scale.X), name_h + Scale(2)));
++		offset = name_h + Scale(4);
++	}
++#endif
+ 	auto offsetIfVisibleWithContent = [&](irr::gui::IGUIStaticText* st) {
+ 		if (st->isVisible() && wcscmp(st->getText(), L"")) {
+ 			st->setRelativePosition(irr::core::recti(xLeft, offset, xRight, offset + st->getTextHeight()));
+@@ -3324,6 +3419,30 @@ int Game::GetMasterRule(uint64_t param, uint32_t forbidden, int* truerule) {
  		return 2;
  }
  void Game::ResizePhaseButtons() {
@@ -125,7 +195,7 @@ index 361b1c87..bbda379f 100644
  	if(gGameConfig->alternative_phase_layout) {
  		wPhase->setRelativePosition(Resize(940, 80, 990, 340));
  		return;
-@@ -3355,6 +3441,25 @@ void Game::ResizePhaseButtons() {
+@@ -3355,6 +3474,25 @@ void Game::ResizePhaseButtons() {
  		y1 = static_cast<irr::s32>(std::round(310 * window_scale.Y));
  		y2 = static_cast<irr::s32>(std::round(330 * window_scale.Y));
  	}
@@ -151,3 +221,15 @@ index 361b1c87..bbda379f 100644
  	wPhase->setRelativePosition(Scale(x1, y1, x2, y2));
  }
  void Game::SetPhaseButtons(bool visibility) {
+@@ -3808,6 +3946,11 @@ void Game::OnResize() {
+ 		window.second.progress2->setRelativePosition(Scale(5, 20 + 15, (300 - 8) * window_scale.X, 20 + 30));
+ 		window.second.history_button2->setRelativePosition(irr::core::recti(ResizeX(200), 5, ResizeX(300 - 5), Scale(20 + 10)));
+ 	}
++#ifdef WITH_REPLAY2VIDEO
++	// Deck export: stName rect is sized dynamically by RefreshCardInfoTextPositions()
++	// based on getTextHeight(), so leave it alone here.
++	if(!replay2video::g_batch.deck_info_layout)
++#endif
+ 	stName->setRelativePosition(Scale(10, 10, 287 * window_scale.X, 32));
+ 
+ 	auto clearSize = Resize(160, 300 - Scale(7), 260, 325 - Scale(7));

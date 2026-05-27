@@ -1,8 +1,22 @@
 diff --git a/gframe/gframe.cpp b/gframe/gframe.cpp
-index ea494aa8..b551c21a 100644
+index ea494aa8..119e1844 100644
 --- a/gframe/gframe.cpp
 +++ b/gframe/gframe.cpp
-@@ -161,6 +161,7 @@ int edopro_main(const args_t& args) {
+@@ -17,6 +17,13 @@
+ #include "game.h"
+ #ifdef WITH_REPLAY2VIDEO
+ #include <iostream>
++#include <IGUIStaticText.h>
++#include <IGUIScrollBar.h>
++#include <IGUITabControl.h>
++#include "CGUITTFont/CGUITTFont.h"
++#include "deck_con.h"
++#include "game_config.h"
++#include "image_manager.h"
+ #include "replay2video/replay2video_integration.h"
+ #include "replay_mode.h"
+ #if EDOPRO_WINDOWS
+@@ -161,10 +168,11 @@ int edopro_main(const args_t& args) {
  		wchar_t** r2v_argv_pre = CommandLineToArgvW(GetCommandLineW(), &r2v_argc_pre);
  		if(r2v_argv_pre && r2v_argc_pre > 1) {
  			ygo::replay2video::RenderConfig r2v_cfg_pre;
@@ -10,7 +24,31 @@ index ea494aa8..b551c21a 100644
  			r2v_cfg_pre.ParseArgs(r2v_argc_pre, r2v_argv_pre);
  			r2v_cfg_pre.Normalize();
  			LocalFree(r2v_argv_pre);
-@@ -229,8 +230,8 @@ int edopro_main(const args_t& args) {
+-			if(!r2v_cfg_pre.input_replay.empty()) {
++			if(!r2v_cfg_pre.input_replay.empty() || !r2v_cfg_pre.input_deck.empty()) {
+ 				s_batch_mode_detected = true;
+ 				g_r2v_window_width = r2v_cfg_pre.render_width;
+ 				g_r2v_window_height = r2v_cfg_pre.render_height;
+@@ -196,10 +204,8 @@ int edopro_main(const args_t& args) {
+ 		ygo::GUIUtils::ShowErrorWindow("Initialization fail", text);
+ 		return EXIT_FAILURE;
+ 	}
+-	fprintf(stderr, "[r2v] A\n"); fflush(stderr);
+ 	if (!data->configs->noClientUpdates)
+ 		updater.CheckUpdates();
+-	fprintf(stderr, "[r2v] B\n"); fflush(stderr);
+ #if EDOPRO_WINDOWS
+ 	if(!data->configs->showConsole && !s_batch_mode_detected) {
+ 		FILE* fDummy;
+@@ -221,7 +227,6 @@ int edopro_main(const args_t& args) {
+ 		ygo::mainGame->gSettings.chkFullscreen->setChecked(ygo::gGameConfig->fullscreen);
+ 	});
+ #endif
+-	fprintf(stderr, "[r2v] C\n"); fflush(stderr);
+ 	srand(static_cast<uint32_t>(time(nullptr)));
+ #ifdef WITH_REPLAY2VIDEO
+ 	{
+@@ -229,11 +234,11 @@ int edopro_main(const args_t& args) {
  		wchar_t** r2v_argv = CommandLineToArgvW(GetCommandLineW(), &r2v_argc);
  		if(r2v_argv && r2v_argc > 1) {
  			ygo::replay2video::RenderConfig r2v_cfg;
@@ -19,39 +57,123 @@ index ea494aa8..b551c21a 100644
 -			r2v_cfg.LoadIni("config.ini");
  			r2v_cfg.Normalize();
  			LocalFree(r2v_argv);
- 			if(!r2v_cfg.input_replay.empty()) {
-@@ -283,24 +284,34 @@ int edopro_main(const args_t& args) {
- 			CheckArguments(args);
- #ifdef WITH_REPLAY2VIDEO
- 			if(ygo::replay2video::g_batch.active) {
-+				fprintf(stderr, "[r2v] Integration.Initialize()\n"); fflush(stderr);
- 				if(!ygo::replay2video::g_integration.Initialize()) {
- 					std::cerr << "[replay2video] Integration init failed.\n";
- 					return EXIT_FAILURE;
+-			if(!r2v_cfg.input_replay.empty()) {
++			if(!r2v_cfg.input_replay.empty() || !r2v_cfg.input_deck.empty()) {
+ 				if(!r2v_cfg.workdir.empty()) {
+ 					if(!ygo::Utils::SetWorkingDirectory(ygo::Utils::ToPathString(r2v_cfg.workdir))) {
+ 						std::cerr << "[replay2video] Failed to set workdir: " << r2v_cfg.workdir << "\n";
+@@ -249,9 +254,6 @@ int edopro_main(const args_t& args) {
+ 			LocalFree(r2v_argv);
+ 		}
+ 	}
+-#endif
+-#ifdef WITH_REPLAY2VIDEO
+-	fprintf(stderr, "[r2v] before do-loop, active=%d\n", (int)ygo::replay2video::g_batch.active); fflush(stderr);
+ #endif
+ 	std::unique_ptr<JWrapper> joystick{ nullptr };
+ 	bool firstlaunch = true;
+@@ -260,12 +262,6 @@ int edopro_main(const args_t& args) {
+ 		Game _game{};
+ 		ygo::mainGame = &_game;
+ 		std::swap(data->tmp_device, ygo::mainGame->device);
+-#ifdef WITH_REPLAY2VIDEO
+-		if(ygo::replay2video::g_batch.active) {
+-			fprintf(stderr, "[r2v] before Initialize, device=%p\n", (void*)ygo::mainGame->device.get());
+-			fflush(stderr);
+-		}
+-#endif
+ 		try {
+ 			ygo::mainGame->Initialize();
+ 		}
+@@ -289,6 +285,82 @@ int edopro_main(const args_t& args) {
  				}
-+				fprintf(stderr, "[r2v] SetupFBO\n"); fflush(stderr);
  				ygo::replay2video::g_integration.SetupFBO(ygo::mainGame->device->getVideoDriver());
  				auto& cfg = ygo::replay2video::g_batch.config;
-+				// Always load card art at 1024px — the default (177px * dpi_scale) is too small for video output.
-+				ygo::mainGame->imageManager.SetArtTextureSize(1024, 1024);
-+				fprintf(stderr, "[r2v] OpenReplay: %s\n", cfg.input_replay.c_str()); fflush(stderr);
++				if(ygo::replay2video::g_batch.deck_mode) {
++					// Size the cached ART texture to ~2× the actual on-screen card width.
++					// At 2× we capture sub-pixel detail without the wasteful 1024→56 px
++					// double-resample. Cards never blur more than the source PNG allows.
++					const float scale = ygo::Game::GetDeckBdR2VScale();
++					const float win_scale_x = (float)cfg.render_width / 1024.f;
++					const int tw_screen = (int)(CARD_THUMB_WIDTH * scale * win_scale_x);
++					const int th_screen = (int)(CARD_THUMB_HEIGHT * scale * win_scale_x);
++					const int art_w = std::max(256, tw_screen * 2);
++					const int art_h = std::max(256, th_screen * 2);
++					ygo::mainGame->imageManager.SetArtTextureSize(art_w, art_h);
++				} else {
++					// Replay mode: load card art at 1024px — the default (177px * dpi_scale) is too small for video output.
++					ygo::mainGame->imageManager.SetArtTextureSize(1024, 1024);
++				}
++				if(ygo::replay2video::g_batch.deck_mode) {
++					if(!ygo::mainGame->deckBuilder.SetCurrentDeckFromFile(ygo::Utils::ToPathString(cfg.input_deck), true)) {
++						std::cerr << "[replay2video] Failed to load deck: " << cfg.input_deck << "\n";
++						return EXIT_FAILURE;
++					}
++					// Enter the deck builder so wDeckEdit/wCardImg/etc. exist with the loaded deck.
++					ygo::mainGame->wMainMenu->setVisible(false);
++					ygo::mainGame->deckBuilder.Initialize(false);
++					// Hide every native deck builder overlay — only the field (deck render)
++					// and the left-side card info panel should remain.
++					ygo::mainGame->wDeckEdit->setVisible(false);
++					ygo::mainGame->wFilter->setVisible(false);
++					ygo::mainGame->wSort->setVisible(false);
++					ygo::mainGame->wCategories->setVisible(false);
++					ygo::mainGame->mTopMenu->setVisible(false);
++					ygo::mainGame->btnLeaveGame->setVisible(false);
++					ygo::mainGame->btnHandTest->setVisible(false);
++					ygo::mainGame->btnHandTestSettings->setVisible(false);
++					ygo::mainGame->btnYdkeManage->setVisible(false);
++					ygo::mainGame->scrFilter->setVisible(false);
++					// Pin the Card Info tab and collapse the tab strip — no need for
++					// Log/Chat/Quick Settings/Repositories in a deck export.
++					if(ygo::mainGame->wInfos) {
++						ygo::mainGame->wInfos->setActiveTab(0);
++						ygo::mainGame->wInfos->setTabHeight(0);
++						// setTabHeight() does not reflow existing tab children — they
++						// keep the Y offset reserved for the old tab strip (34px).
++						// Push the active tab back up so its top matches the wInfos top.
++						if(auto* tab0 = ygo::mainGame->wInfos->getTab(0)) {
++							auto sz = ygo::mainGame->wInfos->getAbsolutePosition().getSize();
++							tab0->setRelativePosition(irr::core::recti(1, 1, sz.Width - 1, sz.Height - 1));
++						}
++						// Without the tab strip the card-info text shrinks visually;
++						// build a larger TTF font and apply it to every card-info
++						// label, then re-flow their positions so nothing overlaps.
++						// wCardImg occupies y=1..273 above, so wInfos stays at y=275.
++						auto fontInfo = ygo::gGameConfig->textfont;
++						fontInfo.size = (uint8_t)(fontInfo.size * 1.7f);
++						auto fallbacks = ygo::gGameConfig->fallbackFonts;
++						for(auto& f : fallbacks) f.size = (uint8_t)(f.size * 1.7f);
++						fontInfo.size = ygo::mainGame->Scale<int>(fontInfo.size);
++						for(auto& f : fallbacks) f.size = ygo::mainGame->Scale<int>(f.size);
++						auto bigFont = irr::gui::CGUITTFont::createTTFont(ygo::mainGame->env, fontInfo, fallbacks);
++						if(bigFont) {
++							ygo::mainGame->stName->setOverrideFont(bigFont);
++							ygo::mainGame->stInfo->setOverrideFont(bigFont);
++							ygo::mainGame->stDataInfo->setOverrideFont(bigFont);
++							ygo::mainGame->stSetName->setOverrideFont(bigFont);
++							ygo::mainGame->stPasscodeScope->setOverrideFont(bigFont);
++							ygo::mainGame->stText->setOverrideFont(bigFont);
++							// Deck export: hide the passcode/scope line ("[37799519] OCG/TCG").
++							ygo::mainGame->stPasscodeScope->setVisible(false);
++							// Tell RefreshCardInfoTextPositions() to size stName by its
++							// actual getTextHeight() and offset the info block below it.
++							ygo::replay2video::g_batch.deck_info_layout = true;
++						}
++					}
++					ygo::mainGame->MainLoop();
++					ygo::replay2video::g_integration.Shutdown();
++					return EXIT_SUCCESS;
++				}
  				if(!ygo::ReplayMode::cur_replay.OpenReplay(ygo::Utils::ToPathString(cfg.input_replay))) {
  					std::cerr << "[replay2video] Failed to open replay: " << cfg.input_replay << "\n";
  					return EXIT_FAILURE;
- 				}
-+				fprintf(stderr, "[r2v] InitBatch\n"); fflush(stderr);
- 				if(!ygo::ReplayMode::InitBatch()) {
+@@ -297,6 +369,8 @@ int edopro_main(const args_t& args) {
  					std::cerr << "[replay2video] Replay has no packets: " << cfg.input_replay << "\n";
  					return EXIT_FAILURE;
  				}
 +				// POV swap is applied in ReplayThread after dInfo is initialized.
-+				fprintf(stderr, "[r2v] entering MainLoop\n"); fflush(stderr);
 +				ygo::gGameConfig->topdown_view = cfg.topdown_view;
  				ygo::gGameConfig->quick_animation = false;
  				ygo::mainGame->wMainMenu->setVisible(false);
  				ygo::mainGame->mTopMenu->setVisible(false);
- 				ygo::mainGame->MainLoop();
-+				fprintf(stderr, "[r2v] MainLoop done\n"); fflush(stderr);
- 				ygo::replay2video::g_integration.Shutdown();
- 				return EXIT_SUCCESS;
- 			}

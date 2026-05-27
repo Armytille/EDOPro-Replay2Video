@@ -3,7 +3,7 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)
 ![License](https://img.shields.io/badge/license-see%20notes-orange)
 
-Convert EDOPro `.yrpX` replay files into `.mp4` / `.mkv` videos using the actual EDOPro rendering engine — full visual fidelity, no screen capture.
+Convert EDOPro `.yrpX` replay files into `.mp4` / `.mkv` videos using the actual EDOPro rendering engine — full visual fidelity, no screen capture. Also exports `.ydk` deck lists as one-frame-per-card videos.
 
 ---
 
@@ -43,9 +43,11 @@ Download the ZIP, extract anywhere. Use the GUI or the CLI.
 
 `replay2videoGUI.exe` is a standalone GUI — no Python or other runtime required.
 
-- Browse for your `.yrpX` replay file, set an output path and workdir
-- Load a quality preset with one click (codec, CRF, resolution, FPS all filled in)
-- Choose POV (Player 1 / Player 2) and camera mode (3D perspective / Top-down)
+- Switch between **Replay** (`.yrpX`) and **Deck** (`.ydk`) mode with a single toggle
+- Browse for your input file, set an output path and workdir
+- Load a quality preset with one click (codec, CRF, resolution, FPS, VF filter, hwaccel all filled in)
+- Choose POV (Player 1 / Player 2) and camera mode (3D perspective / Top-down) — replay mode
+- Set per-card duration in milliseconds — deck mode
 - Advanced settings (codec, CRF slider, tune, hardware acceleration) in a collapsible panel
 - Live frame counter during encoding, log output, and an "Open folder" button on completion
 - Dry run mode (10 frames + PNG) for a quick render check
@@ -102,6 +104,17 @@ replay2video.exe --render-replay "C:\replays\duel.yrpX" --output "C:\replays\due
   --vf "libplacebo=upscaler=ewa_lanczos:downscaler=ewa_lanczos:antiringing=1:deband=1:deband_iterations=4:deband_radius=24:deband_threshold=4:chroma_location=left"
 ```
 
+### Deck export — one frame per unique card
+
+Encodes a `.ydk` decklist as a video showcasing each unique card across main/extra/side, deduplicated, with a configurable per-card hold time. FPS is forced to `10` (sim) and the encoder writes exactly one frame per unique card.
+
+```bat
+replay2video.exe --render-deck "C:\decks\my_deck.ydk" --output "C:\decks\my_deck.mp4" ^
+  --card-duration-ms 700 --workdir "C:\EDOPro"
+```
+
+A 46-card deck at 700 ms/card produces ~32 s of video.
+
 ### Dry run — check rendering without encoding
 
 ```bat
@@ -149,7 +162,9 @@ Copy any file from `presets/` as `config.ini`. Each preset is a ready-to-use con
 ### Input / Output
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--render-replay` | Path to `.yrpX` replay file | *(required)* |
+| `--render-replay` | Path to `.yrpX` replay file (replay mode) | *(one of these required)* |
+| `--render-deck` | Path to `.ydk` deck file (deck export mode) | *(one of these required)* |
+| `--card-duration-ms` | Deck mode: time spent on each unique card (ms) | `700` |
 | `--output` | Output path (`.mp4` or `.mkv`) | `output.mp4` |
 | `--workdir` | Path to EDOPro installation | `.` |
 
@@ -217,6 +232,7 @@ margin=0.10
 # vf=libplacebo=upscaler=ewa_lanczos:deband=1
 # hwaccel=vulkan
 # hwaccel_device=0
+# card_duration_ms=700   # deck mode only
 ```
 
 ---
@@ -241,7 +257,7 @@ margin=0.10
 
 ## How It Works
 
-EDOPro runs in a hidden window (no display needed), driven by a virtual timer for frame-perfect output. Each frame is captured via Irrlicht's framebuffer, converted to YUV, and encoded with FFmpeg. The replay auto-advances without any user interaction.
+EDOPro runs in a hidden window (no display needed), driven by a virtual timer for frame-perfect output. Each frame is captured via Irrlicht's framebuffer, converted to YUV, and encoded with FFmpeg. Replay mode auto-advances the `.yrpX` file without user interaction; deck mode walks the `.ydk` list, deduplicates cards across main/extra/side, and emits exactly one video frame per unique card with deterministic timing.
 
 Optional: GPU filtergraph via Vulkan + libplacebo for high-quality debanding and scaling.
 
